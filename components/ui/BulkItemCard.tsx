@@ -272,7 +272,7 @@ export function BulkItemCard({ item, onUpdate, onRemove }: BulkItemCardProps) {
           <button
             type="button"
             onClick={() => setUploadMode("ai-generate")}
-            className="group relative flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-primary-300 dark:border-primary-700 bg-gradient-to-br from-primary-50/50 to-purple-50/50 dark:from-primary-900/20 dark:to-purple-900/20 hover:border-primary-500 dark:hover:border-primary-500 hover:shadow-md transition-all duration-200 min-h-[120px]"
+            className="group relative flex flex-col items-center justify-center p-4 rounded-lg border-2 border-primary-300 dark:border-primary-700 bg-gradient-to-br from-primary-50/50 to-purple-50/50 dark:from-primary-900/20 dark:to-purple-900/20 hover:border-primary-500 dark:hover:border-primary-500 hover:shadow-md transition-all duration-200 min-h-[120px]"
           >
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary-500 to-purple-500 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform duration-200">
               <Sparkles className="h-5 w-5 text-white" aria-hidden="true" />
@@ -289,7 +289,7 @@ export function BulkItemCard({ item, onUpdate, onRemove }: BulkItemCardProps) {
           <button
             type="button"
             onClick={() => setUploadMode("manual")}
-            className="group flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-dark-300 dark:border-dark-600 bg-dark-50/50 dark:bg-dark-800/50 hover:border-dark-400 dark:hover:border-dark-500 hover:bg-dark-100/50 dark:hover:bg-dark-800 transition-all duration-200 min-h-[120px]"
+            className="group flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dark-300 dark:border-dark-600 bg-dark-50/50 dark:bg-dark-800/50 hover:border-dark-400 dark:hover:border-dark-500 hover:bg-dark-100/50 dark:hover:bg-dark-800 transition-all duration-200 min-h-[120px]"
           >
             <div className="h-10 w-10 rounded-xl bg-dark-200 dark:bg-dark-700 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform duration-200">
               <Upload
@@ -348,7 +348,7 @@ export function BulkItemCard({ item, onUpdate, onRemove }: BulkItemCardProps) {
             onDragLeave={handleDragLeave}
             onDragEnter={handleDragOver}
             className={`
-              relative border-2 border-dashed rounded-lg overflow-hidden transition-all duration-200
+              relative border-2 rounded-lg overflow-hidden transition-all duration-200
               ${
                 isDragging
                   ? "border-primary-500 bg-primary-50 dark:bg-primary-900/10"
@@ -417,7 +417,7 @@ export function BulkItemCard({ item, onUpdate, onRemove }: BulkItemCardProps) {
 
                 {/* Add more images button */}
                 {canAddMoreImages && (
-                  <label className="aspect-square border-2 border-dashed border-dark-300 dark:border-dark-700 rounded flex items-center justify-center cursor-pointer hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/10 transition-colors">
+                  <label className="aspect-square border-2 border-dark-300 dark:border-dark-700 rounded flex items-center justify-center cursor-pointer hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/10 transition-colors">
                     <input
                       type="file"
                       multiple

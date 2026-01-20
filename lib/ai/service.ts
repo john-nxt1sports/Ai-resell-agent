@@ -38,6 +38,12 @@ export async function generateListing(
 
 CRITICAL: When a specific writing style is specified, you MUST strictly adhere to that style's tone, vocabulary, and sentence structure. The writing style is not a suggestion - it's a requirement that defines how the description must be written.
 
+IMPORTANT FORMATTING RULES:
+- Do NOT use markdown formatting (no **bold**, no *italics*, no # headers)
+- Do NOT use asterisks (*) for bullet points - use dashes (-) instead
+- Keep descriptions as plain text only - marketplaces do not render markdown
+- Use line breaks and dashes for structure, not special characters
+
 Always return valid JSON only.`,
     },
     {
@@ -51,7 +57,7 @@ Always return valid JSON only.`,
       model,
       messages,
       temperature: 0.7,
-      max_tokens: 1500,
+      max_tokens: 2500,
     });
 
     const content = response.choices[0].message.content;
@@ -79,18 +85,26 @@ export async function generateBulkListings(
  */
 export async function analyzeImages(
   imageUrls: string[],
-  model: AIModel = "google/gemini-3-pro-preview",
+  model: AIModel = "google/gemini-2.0-flash-001",
 ): Promise<ImageAnalysisResult> {
-  const messages: AIMessage[] = [
+  // Build multimodal content array with images
+  const imageContent = imageUrls.map((url) => ({
+    type: "image_url" as const,
+    image_url: { url },
+  }));
+
+  const messages = [
     {
-      role: "system",
-      content: `You are an expert at analyzing product images for e-commerce listings. Identify items, brands, conditions, colors, and suggest optimal categories. Always return valid JSON only.`,
+      role: "system" as const,
+      content: `You are an expert at analyzing product images for e-commerce listings. Identify items, brands, conditions, colors, and suggest optimal categories. Always respond with valid JSON only, no markdown formatting.`,
     },
     {
-      role: "user",
-      content: `Analyze these product images and provide details:
-
-Images: ${imageUrls.join(", ")}
+      role: "user" as const,
+      content: [
+        ...imageContent,
+        {
+          type: "text" as const,
+          text: `Analyze these product images and provide details.
 
 Return a JSON object with:
 {
@@ -101,19 +115,26 @@ Return a JSON object with:
   "suggestedBrand": "brand name if visible",
   "colors": ["color1", "color2"],
   "keywords": ["keyword1", "keyword2"]
-}`,
+}
+
+Respond with ONLY the JSON object, no additional text or formatting.`,
+        },
+      ],
     },
   ];
 
   try {
     const response = await openRouterClient.createCompletion({
       model,
-      messages,
+      messages: messages as AIMessage[],
       temperature: 0.3,
       max_tokens: 500,
     });
 
-    const content = response.choices[0].message.content;
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error("Empty response from AI");
+    }
     return parseImageAnalysisResponse(content);
   } catch (error: unknown) {
     console.error("Error analyzing images:", error);
@@ -294,6 +315,16 @@ Return a JSON object with:
 function parseListingResponse(content: string): GeneratedListing {
   try {
     const jsonStr = extractJSON(content);
+    if (!jsonStr || jsonStr.trim() === "") {
+      console.error("Empty JSON string from content:", content);
+      return {
+        title: "Generated Listing",
+        description: "Unable to generate description. Please try again.",
+        tags: [],
+        suggestedPrice: undefined,
+        marketplaceOptimizations: {},
+      };
+    }
     const parsed = JSON.parse(jsonStr);
 
     return {
@@ -305,7 +336,15 @@ function parseListingResponse(content: string): GeneratedListing {
     };
   } catch (error) {
     console.error("Error parsing listing response:", error);
-    throw new Error("Failed to parse AI response");
+    console.error("Raw content:", content);
+    // Return default values instead of throwing
+    return {
+      title: "Generated Listing",
+      description: "Unable to parse AI response. Please try again.",
+      tags: [],
+      suggestedPrice: undefined,
+      marketplaceOptimizations: {},
+    };
   }
 }
 
@@ -315,6 +354,19 @@ function parseListingResponse(content: string): GeneratedListing {
 function parseImageAnalysisResponse(content: string): ImageAnalysisResult {
   try {
     const jsonStr = extractJSON(content);
+    if (!jsonStr || jsonStr.trim() === "") {
+      console.error("Empty JSON string from content:", content);
+      // Return default values if parsing fails
+      return {
+        description: "Unable to analyze image",
+        detectedItems: [],
+        suggestedCategory: "Other",
+        suggestedCondition: "Good",
+        suggestedBrand: undefined,
+        colors: [],
+        keywords: [],
+      };
+    }
     const parsed = JSON.parse(jsonStr);
 
     return {
@@ -330,28 +382,105 @@ function parseImageAnalysisResponse(content: string): ImageAnalysisResult {
     };
   } catch (error) {
     console.error("Error parsing image analysis response:", error);
-    throw new Error("Failed to parse AI response");
+    console.error("Raw content:", content);
+    // Return default values instead of throwing
+    return {
+      description: "Unable to analyze image",
+      detectedItems: [],
+      suggestedCategory: "Other",
+      suggestedCondition: "Good",
+      suggestedBrand: undefined,
+      colors: [],
+      keywords: [],
+    };
   }
 }
 
 /**
- * Extract JSON from AI response (handles markdown code blocks)
+ * Extract JSON from AI response (handles markdown code blocks and truncated responses)
  */
 function extractJSON(content: string): string {
-  // Try to find JSON in markdown code block
-  const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  // Remove any leading/trailing whitespace
+  content = content.trim();
+
+  // Try to find JSON in markdown code block (greedy match for nested objects)
+  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (jsonMatch) {
-    return jsonMatch[1];
+    const extracted = jsonMatch[1].trim();
+    // Validate it starts with {
+    if (extracted.startsWith("{")) {
+      return repairTruncatedJSON(extracted);
+    }
   }
 
-  // Try to find raw JSON object
-  const rawMatch = content.match(/\{[\s\S]*\}/);
-  if (rawMatch) {
-    return rawMatch[0];
+  // Try to find raw JSON object - find first { and last }
+  const firstBrace = content.indexOf("{");
+  const lastBrace = content.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return content.slice(firstBrace, lastBrace + 1);
+  }
+
+  // If we only found opening brace, try to repair truncated JSON
+  if (firstBrace !== -1) {
+    return repairTruncatedJSON(content.slice(firstBrace));
   }
 
   // Return as-is if no match
   return content;
+}
+
+/**
+ * Attempt to repair truncated JSON by closing open brackets and quotes
+ */
+function repairTruncatedJSON(json: string): string {
+  // If it already ends with }, try to parse as-is
+  if (json.trim().endsWith("}")) {
+    return json;
+  }
+
+  // Count open brackets and braces
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  let lastChar = "";
+
+  for (let i = 0; i < json.length; i++) {
+    const char = json[i];
+    const prevChar = i > 0 ? json[i - 1] : "";
+
+    // Track string state (ignoring escaped quotes)
+    if (char === '"' && prevChar !== "\\") {
+      inString = !inString;
+    }
+
+    if (!inString) {
+      if (char === "{") openBraces++;
+      else if (char === "}") openBraces--;
+      else if (char === "[") openBrackets++;
+      else if (char === "]") openBrackets--;
+    }
+    lastChar = char;
+  }
+
+  // Build repair suffix
+  let repair = "";
+
+  // Close any open string
+  if (inString) {
+    repair += '"';
+  }
+
+  // Close any open arrays
+  for (let i = 0; i < openBrackets; i++) {
+    repair += "]";
+  }
+
+  // Close any open objects
+  for (let i = 0; i < openBraces; i++) {
+    repair += "}";
+  }
+
+  return json + repair;
 }
 
 /**

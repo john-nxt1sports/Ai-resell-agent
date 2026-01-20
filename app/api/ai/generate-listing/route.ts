@@ -1,7 +1,7 @@
 /**
  * AI Listing Generation API Route
  * POST /api/ai/generate-listing
- * 
+ *
  * Security features:
  * - Rate limiting (100 requests/hour per user)
  * - Input validation
@@ -15,7 +15,6 @@ import { generateListing, estimateCost } from "@/lib/ai/service";
 import { ListingGenerationInput, AIModel } from "@/lib/ai/types";
 import { withRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { withLogging, logger } from "@/lib/logger";
-import { withCsrfProtectionConditional } from "@/lib/csrf";
 import { validateRequestBody, ValidationError } from "@/lib/validation";
 
 async function handler(request: Request) {
@@ -28,7 +27,9 @@ async function handler(request: Request) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      logger.warn("Unauthorized AI generation attempt", { error: authError?.message });
+      logger.warn("Unauthorized AI generation attempt", {
+        error: authError?.message,
+      });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -51,11 +52,11 @@ async function handler(request: Request) {
 
     // Log AI usage to database
     const tokensUsed = Math.ceil(
-      (JSON.stringify(input).length + JSON.stringify(listing).length) / 4
+      (JSON.stringify(input).length + JSON.stringify(listing).length) / 4,
     );
     const cost = estimateCost(
       tokensUsed,
-      model || "anthropic/claude-3.5-sonnet"
+      model || "anthropic/claude-3.5-sonnet",
     );
 
     await supabase.from("ai_generations").insert({
@@ -70,11 +71,11 @@ async function handler(request: Request) {
       success: true,
     });
 
-    logger.info("AI listing generation completed", { 
-      userId: user.id, 
-      tokensUsed, 
-      cost, 
-      duration 
+    logger.info("AI listing generation completed", {
+      userId: user.id,
+      tokensUsed,
+      cost,
+      duration,
     });
 
     return NextResponse.json({
@@ -89,13 +90,13 @@ async function handler(request: Request) {
   } catch (error: any) {
     // Handle validation errors
     if (error instanceof ValidationError) {
-      logger.warn("Validation error in AI generation", { 
-        field: error.field, 
-        message: error.message 
+      logger.warn("Validation error in AI generation", {
+        field: error.field,
+        message: error.message,
       });
       return NextResponse.json(
         { error: error.message, field: error.field },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -120,21 +121,21 @@ async function handler(request: Request) {
         });
       }
     } catch (logError) {
-      logger.error("Error logging AI generation failure", { error: String(logError) });
+      logger.error("Error logging AI generation failure", {
+        error: String(logError),
+      });
     }
 
     return NextResponse.json(
       { error: "Failed to generate listing. Please try again." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// Apply middleware: Rate limiting -> Logging -> CSRF protection
+// Apply middleware: Rate limiting -> Logging (CSRF disabled for authenticated AI routes)
 export const POST = withRateLimit(
-  withLogging(
-    withCsrfProtectionConditional(handler)
-  ),
+  withLogging(handler),
   RATE_LIMITS.AI_GENERATE,
-  'ai-generate'
+  "ai-generate",
 );

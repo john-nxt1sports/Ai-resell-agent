@@ -6,6 +6,7 @@
 export type AIModel =
   | "google/gemini-3-pro-preview"
   | "google/gemini-3-pro-image-preview"
+  | "google/gemini-2.0-flash-001"
   | "anthropic/claude-3.5-sonnet"
   | "openai/gpt-4-turbo"
   | "openai/gpt-4o"
@@ -13,9 +14,24 @@ export type AIModel =
   | "meta-llama/llama-3.1-70b-instruct"
   | "google/gemini-pro";
 
+// Multimodal content types for vision models
+export interface TextContent {
+  type: "text";
+  text: string;
+}
+
+export interface ImageUrlContent {
+  type: "image_url";
+  image_url: {
+    url: string;
+  };
+}
+
+export type MessageContent = string | (TextContent | ImageUrlContent)[];
+
 export interface AIMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: MessageContent;
 }
 
 export interface AICompletionRequest {

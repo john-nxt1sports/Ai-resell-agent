@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AI Resell Agent - Marketplace Poster",
+  "name": "ListingsAI - Multi-Marketplace Poster",
   "version": "1.0.0",
-  "description": "Automatically post your listings to Poshmark, Mercari, eBay, and more from AI Resell Agent",
+  "description": "Automatically post your listings to Poshmark, Mercari, and eBay from ListingsAI. Save hours with AI-powered cross-posting.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -11,16 +11,13 @@
   },
   "permissions": ["storage", "tabs", "activeTab", "scripting"],
   "host_permissions": [
+    "https://ai-resell-agent.vercel.app/*",
     "https://poshmark.com/*",
     "https://www.poshmark.com/*",
     "https://mercari.com/*",
     "https://www.mercari.com/*",
     "https://ebay.com/*",
-    "https://www.ebay.com/*",
-    "https://depop.com/*",
-    "https://www.depop.com/*",
-    "http://localhost:3000/*",
-    "https://*.vercel.app/*"
+    "https://www.ebay.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -28,7 +25,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://localhost:3000/*", "https://*.vercel.app/*"],
+      "matches": ["https://ai-resell-agent.vercel.app/*"],
       "js": ["content-scripts/webapp.js"],
       "run_at": "document_idle"
     },
@@ -58,6 +55,6 @@
     }
   },
   "externally_connectable": {
-    "matches": ["http://localhost:3000/*", "https://*.vercel.app/*"]
+    "matches": ["https://ai-resell-agent.vercel.app/*"]
   }
 }

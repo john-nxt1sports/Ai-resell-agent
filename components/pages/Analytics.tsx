@@ -56,15 +56,11 @@ export function Analytics() {
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [aiInsights, setAiInsights] = useState<AIInsight[]>([]);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
-  const [displayedInsights, setDisplayedInsights] = useState<string[]>([
-    "",
-    "",
-    "",
-  ]);
+  const [showInsights, setShowInsights] = useState(false);
+  const [displayedInsights, setDisplayedInsights] = useState<string[]>([]);
   const [currentInsightIndex, setCurrentInsightIndex] = useState(0);
-  const [hasSeenTypewriter, setHasSeenTypewriter] = useState(false);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(
-    null
+    null,
   );
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -103,10 +99,10 @@ export function Analytics() {
       timeRange === "7d"
         ? 7
         : timeRange === "30d"
-        ? 30
-        : timeRange === "90d"
-        ? 90
-        : 365;
+          ? 30
+          : timeRange === "90d"
+            ? 90
+            : 365;
 
     const { data, error } = await getAnalyticsSummary(userId, days);
 
@@ -127,7 +123,7 @@ export function Analytics() {
   // Calculate metrics from real data
   const totalListings = listings.length;
   const activeListings = listings.filter(
-    (l) => l.status === "published"
+    (l) => l.status === "published",
   ).length;
   const totalValue = listings
     .filter((l) => l.status === "published")
@@ -140,18 +136,18 @@ export function Analytics() {
       timeRange === "7d"
         ? 7
         : timeRange === "30d"
-        ? 30
-        : timeRange === "90d"
-        ? 90
-        : 365,
+          ? 30
+          : timeRange === "90d"
+            ? 90
+            : 365,
     previousDays:
       timeRange === "7d"
         ? 7
         : timeRange === "30d"
-        ? 30
-        : timeRange === "90d"
-        ? 90
-        : 365,
+          ? 30
+          : timeRange === "90d"
+            ? 90
+            : 365,
     enabled: !!currentUserId,
   });
 
@@ -260,7 +256,7 @@ export function Analytics() {
       // Insight 1: Most active marketplace
       const topMarketplace = marketplaceStats.reduce(
         (max, current) => (current.views > max.views ? current : max),
-        marketplaceStats[0]
+        marketplaceStats[0],
       );
 
       if (topMarketplace.views > 0) {
@@ -286,8 +282,8 @@ export function Analytics() {
             timeRange === "7d"
               ? "week"
               : timeRange === "30d"
-              ? "month"
-              : "period"
+                ? "month"
+                : "period"
           }`,
         });
       } else if (metrics.views > 0) {
@@ -333,7 +329,7 @@ export function Analytics() {
           {
             type: "neutral",
             text: "AI-powered analytics will help optimize your pricing and listing strategy",
-          }
+          },
         );
       }
 
@@ -345,58 +341,15 @@ export function Analytics() {
     }, 1500);
   };
 
-  // Check if typewriter has been seen this session
+  // Quick fade-in animation for insights
   useEffect(() => {
-    const seen = sessionStorage.getItem("analytics-typewriter-seen");
-    if (seen === "true") {
-      setHasSeenTypewriter(true);
+    if (aiInsights.length > 0) {
+      const timer = setTimeout(() => {
+        setShowInsights(true);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, []);
-
-  // Typewriter effect for insights (only on first view)
-  useEffect(() => {
-    if (
-      hasSeenTypewriter ||
-      aiInsights.length === 0 ||
-      currentInsightIndex >= aiInsights.length
-    ) {
-      // If already seen, show all text immediately
-      if (hasSeenTypewriter && aiInsights.length > 0) {
-        setDisplayedInsights(aiInsights.map((insight) => insight.text));
-      }
-      return;
-    }
-
-    const currentInsight = aiInsights[currentInsightIndex];
-    let charIndex = 0;
-
-    const timer = setInterval(() => {
-      if (charIndex <= currentInsight.text.length) {
-        setDisplayedInsights((prev) => {
-          const newInsights = [...prev];
-          newInsights[currentInsightIndex] = currentInsight.text.slice(
-            0,
-            charIndex
-          );
-          return newInsights;
-        });
-        charIndex++;
-      } else {
-        clearInterval(timer);
-        // Move to next insight after a brief pause
-        setTimeout(() => {
-          if (currentInsightIndex === aiInsights.length - 1) {
-            // Last insight finished, mark as seen
-            sessionStorage.setItem("analytics-typewriter-seen", "true");
-            setHasSeenTypewriter(true);
-          }
-          setCurrentInsightIndex((prev) => prev + 1);
-        }, 200);
-      }
-    }, 20);
-
-    return () => clearInterval(timer);
-  }, [aiInsights, currentInsightIndex, hasSeenTypewriter]);
+  }, [aiInsights]);
 
   // Generate insights when analytics data is loaded
   useEffect(() => {
@@ -499,24 +452,21 @@ export function Analytics() {
                         insight.type === "positive"
                           ? "text-green-500"
                           : insight.type === "warning"
-                          ? "text-yellow-500"
-                          : "text-blue-500"
+                            ? "text-yellow-500"
+                            : "text-blue-500"
                       }`}
                     >
                       {insight.type === "positive"
                         ? "✓"
                         : insight.type === "warning"
-                        ? "⚠"
-                        : "→"}
+                          ? "⚠"
+                          : "→"}
                     </span>
-                    <span>
-                      {displayedInsights[index]}
-                      {!hasSeenTypewriter &&
-                        currentInsightIndex === index &&
-                        displayedInsights[index].length <
-                          insight.text.length && (
-                          <span className="inline-block w-0.5 h-3.5 bg-primary-500 ml-0.5 animate-pulse" />
-                        )}
+                    <span
+                      className={`transition-all duration-300 ${showInsights ? "opacity-100" : "opacity-0"}`}
+                      style={{ transitionDelay: `${index * 100}ms` }}
+                    >
+                      {insight.text}
                     </span>
                   </li>
                 ))}

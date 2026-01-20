@@ -43,6 +43,34 @@ export function BulkListing() {
     Marketplace[]
   >([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [autoGenerateAI, setAutoGenerateAI] = useState(true);
+
+  // Load saved auto-generate AI preference
+  useEffect(() => {
+    const saved = localStorage.getItem("auto-generate-ai");
+    if (saved !== null) {
+      setAutoGenerateAI(saved === "true");
+    }
+  }, []);
+
+  // Save auto-generate AI preference
+  const handleToggleAutoGenerateAI = (enabled: boolean) => {
+    setAutoGenerateAI(enabled);
+    localStorage.setItem("auto-generate-ai", String(enabled));
+  };
+
+  // Auto-trigger AI generation when toggle is on and items have images but need generation
+  useEffect(() => {
+    if (autoGenerateAI && !generatingBulk) {
+      const itemsNeedingGeneration = bulkItems.filter(
+        (item) => item.images.length > 0 && (!item.title || item.price === 0),
+      );
+      if (itemsNeedingGeneration.length > 0) {
+        handleGenerateAllWithAI();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGenerateAI, bulkItems]);
 
   const handleAddNewItem = () => {
     const newItem: BulkListingItem = {
@@ -90,7 +118,6 @@ export function BulkListing() {
     );
 
     if (itemsToGenerate.length === 0) {
-      alert("No items need AI generation");
       return;
     }
 
@@ -244,29 +271,35 @@ export function BulkListing() {
               <h2 className="text-lg font-semibold text-dark-900 dark:text-dark-50">
                 Listing Items ({bulkItems.length})
               </h2>
-              <button
-                type="button"
-                onClick={handleGenerateAllWithAI}
-                disabled={
-                  generatingBulk ||
-                  bulkItems.filter(
-                    (i) => i.images.length > 0 && (!i.title || i.price === 0),
-                  ).length === 0
-                }
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {generatingBulk ? (
-                  <>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-sm text-dark-600 dark:text-dark-400">
+                  <Sparkles className="h-4 w-4" />
+                  <span>Auto-generate with AI</span>
+                </div>
+                {generatingBulk && (
+                  <div className="flex items-center gap-2 text-sm text-primary-600 dark:text-primary-400">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Generate All with AI
-                  </>
+                    <span>Generating...</span>
+                  </div>
                 )}
-              </button>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoGenerateAI}
+                  onClick={() => handleToggleAutoGenerateAI(!autoGenerateAI)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
+                    autoGenerateAI
+                      ? "bg-gradient-to-r from-purple-500 to-pink-500"
+                      : "bg-dark-300 dark:bg-dark-600"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform ${
+                      autoGenerateAI ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             {generateError && (

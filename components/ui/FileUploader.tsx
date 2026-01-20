@@ -220,7 +220,7 @@ export function FileUploader({
         onDragLeave={handleDragLeave}
         onDragEnter={handleDragOver}
         className={`
-          relative border-2 border-dashed rounded-lg p-8 transition-all duration-200
+          relative border-2 rounded-lg p-8 transition-all duration-200
           ${
             isDragging
               ? "border-primary-500 bg-primary-50 dark:bg-primary-900/10 scale-[1.01]"
@@ -319,7 +319,7 @@ export function FileUploader({
           {canAddMore && (
             <label
               htmlFor={inputId}
-              className="aspect-square rounded-lg border-2 border-dashed border-dark-300 dark:border-dark-700 flex flex-col items-center justify-center cursor-pointer hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/10 transition-all duration-200"
+              className="aspect-square rounded-lg border-2 border-dark-300 dark:border-dark-700 flex flex-col items-center justify-center cursor-pointer hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/10 transition-all duration-200"
             >
               <ImageIcon
                 className="h-8 w-8 text-dark-400 mb-2"

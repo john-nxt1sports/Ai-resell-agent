@@ -84,9 +84,7 @@ export function NewListing() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiStyle, setAiStyle] = useState<string | null>(null);
   const [showStyleSetup, setShowStyleSetup] = useState(true);
-  const [typewriterText, setTypewriterText] = useState("");
-  const [isTyping, setIsTyping] = useState(true);
-  const [hasSeenTypewriter, setHasSeenTypewriter] = useState(false);
+  const [showWelcomeMessage, setShowWelcomeMessage] = useState(false);
   const [aiGeneratedData, setAiGeneratedData] = useState<any>(null);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
@@ -96,41 +94,37 @@ export function NewListing() {
   const [uploadMode, setUploadMode] = useState<
     "select" | "ai-generate" | "manual"
   >("select");
+  const [autoGenerateAI, setAutoGenerateAI] = useState(true);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
+
+  // Load saved auto-generate AI preference
+  useEffect(() => {
+    const saved = localStorage.getItem("auto-generate-ai");
+    if (saved !== null) {
+      setAutoGenerateAI(saved === "true");
+    }
+  }, []);
+
+  // Save auto-generate AI preference
+  const handleToggleAutoGenerateAI = (enabled: boolean) => {
+    setAutoGenerateAI(enabled);
+    localStorage.setItem("auto-generate-ai", String(enabled));
+  };
 
   const welcomeMessage =
     "Hi! 👋 I'm your AI listing assistant. Before we create your first listing, let's personalize how I write descriptions for you. Choose a style that matches your brand and target audience. You can always change this later!";
 
-  // Check if typewriter has been seen this session
+  // Quick fade-in animation for welcome message
   useEffect(() => {
-    const seen = sessionStorage.getItem("listing-typewriter-seen");
-    if (seen === "true") {
-      setHasSeenTypewriter(true);
-      setTypewriterText(welcomeMessage);
-      setIsTyping(false);
+    if (aiStyle === null) {
+      const timer = setTimeout(() => {
+        setShowWelcomeMessage(true);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, []);
-
-  // Typewriter effect for first-time setup (only once per session)
-  useEffect(() => {
-    if (aiStyle === null && isTyping && !hasSeenTypewriter) {
-      let index = 0;
-      const timer = setInterval(() => {
-        if (index <= welcomeMessage.length) {
-          setTypewriterText(welcomeMessage.slice(0, index));
-          index++;
-        } else {
-          setIsTyping(false);
-          sessionStorage.setItem("listing-typewriter-seen", "true");
-          setHasSeenTypewriter(true);
-          clearInterval(timer);
-        }
-      }, 30);
-
-      return () => clearInterval(timer);
-    }
-  }, [aiStyle, isTyping, hasSeenTypewriter]);
+  }, [aiStyle]);
 
   const handleStyleSelect = (styleId: string) => {
     setAiStyle(styleId);
@@ -269,16 +263,49 @@ export function NewListing() {
   ]);
 
   const handleImagesChange = (newImages: UploadedImage[]) => {
+    // Only reset uploadedImageUrls if images were added or removed (not just cropped)
+    // Compare by checking if the set of image IDs changed
+    const currentIds = new Set(images.map((img) => img.id));
+    const newIds = new Set(newImages.map((img) => img.id));
+    const idsChanged =
+      currentIds.size !== newIds.size ||
+      [...currentIds].some((id) => !newIds.has(id));
+
     setImages(newImages);
-    setUploadedImageUrls([]);
+
+    // Only trigger re-upload if images were added/removed, not just edited
+    if (idsChanged) {
+      setUploadedImageUrls([]);
+    }
   };
 
   const handleGenerateWithAI = async () => {
     if (!category || !condition) {
-      alert(
-        "Please provide at least Category and Condition to generate with AI",
-      );
       return;
+    }
+
+    // Build additional details including image analysis data
+    let additionalInfo = aiStyle
+      ? `Writing style: ${AI_STYLES.find((s) => s.id === aiStyle)?.name}\n`
+      : "";
+
+    // Include image analysis data if available
+    if (imageAnalysis) {
+      if (imageAnalysis.description) {
+        additionalInfo += `Image Analysis: ${imageAnalysis.description}\n`;
+      }
+      if (
+        imageAnalysis.detectedItems &&
+        imageAnalysis.detectedItems.length > 0
+      ) {
+        additionalInfo += `Detected Items: ${imageAnalysis.detectedItems.join(", ")}\n`;
+      }
+      if (imageAnalysis.colors && imageAnalysis.colors.length > 0) {
+        additionalInfo += `Colors: ${imageAnalysis.colors.join(", ")}\n`;
+      }
+      if (imageAnalysis.keywords && imageAnalysis.keywords.length > 0) {
+        additionalInfo += `Keywords: ${imageAnalysis.keywords.join(", ")}\n`;
+      }
     }
 
     await generateListing({
@@ -288,14 +315,29 @@ export function NewListing() {
       condition,
       price: price ? parseFloat(price) : undefined,
       brand: brand || undefined,
-      additionalDetails: aiStyle
-        ? `Writing style: ${AI_STYLES.find((s) => s.id === aiStyle)?.name}`
-        : undefined,
+      additionalDetails: additionalInfo.trim() || undefined,
     });
   };
 
+  // Auto-trigger AI generation when toggle is on, required fields are filled, and image analysis is done
+  useEffect(() => {
+    if (
+      autoGenerateAI &&
+      category &&
+      condition &&
+      !generatingListing &&
+      !aiGeneratedData &&
+      !analyzingImages &&
+      (imageAnalysis || images.length === 0) // Either analysis done or no images
+    ) {
+      handleGenerateWithAI();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGenerateAI, category, condition, imageAnalysis, analyzingImages]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAttemptedSubmit(true);
 
     if (
       !title ||
@@ -303,9 +345,6 @@ export function NewListing() {
       images.length === 0 ||
       selectedMarketplaces.length === 0
     ) {
-      alert(
-        "Please fill in all required fields (title, price, images, and at least one marketplace)",
-      );
       return;
     }
 
@@ -447,14 +486,17 @@ export function NewListing() {
 
         {showStyleSetup && (
           <div className="px-6 pb-6 space-y-4">
-            {/* Typewriter Message for First Time */}
+            {/* Welcome Message with Fade-in Animation */}
             {aiStyle === null && (
-              <div className="bg-white dark:bg-dark-900 rounded-lg p-4 border border-primary-200 dark:border-primary-800">
+              <div
+                className={`bg-white dark:bg-dark-900 rounded-lg p-4 border border-primary-200 dark:border-primary-800 transition-all duration-300 ${
+                  showWelcomeMessage
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 translate-y-2"
+                }`}
+              >
                 <p className="text-dark-700 dark:text-dark-300 leading-relaxed">
-                  {typewriterText}
-                  {isTyping && !hasSeenTypewriter && (
-                    <span className="inline-block w-0.5 h-4 bg-primary-500 ml-1 animate-pulse" />
-                  )}
+                  {welcomeMessage}
                 </p>
               </div>
             )}
@@ -507,7 +549,13 @@ export function NewListing() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Image Upload Section */}
-        <div className="bg-white dark:bg-dark-900 rounded-xl border border-dark-200 dark:border-dark-800 p-6">
+        <div
+          className={`bg-white dark:bg-dark-900 rounded-xl border p-6 transition-colors ${
+            attemptedSubmit && images.length === 0
+              ? "border-red-500 dark:border-red-500"
+              : "border-dark-200 dark:border-dark-800"
+          }`}
+        >
           {uploadMode === "select" ? (
             <>
               <div className="mb-6">
@@ -517,6 +565,22 @@ export function NewListing() {
                 <p className="text-sm text-dark-500 dark:text-dark-400 mt-1">
                   Choose how you want to add your product images
                 </p>
+                {attemptedSubmit && images.length === 0 && (
+                  <p className="mt-2 text-sm text-red-500 flex items-center gap-1">
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    At least one image is required
+                  </p>
+                )}
               </div>
 
               {/* Two Box Selection */}
@@ -525,7 +589,7 @@ export function NewListing() {
                 <button
                   type="button"
                   onClick={() => setUploadMode("ai-generate")}
-                  className="group relative flex flex-col items-center justify-center p-8 rounded-xl border-2 border-dashed border-primary-300 dark:border-primary-700 bg-gradient-to-br from-primary-50/50 to-purple-50/50 dark:from-primary-900/20 dark:to-purple-900/20 hover:border-primary-500 dark:hover:border-primary-500 hover:shadow-lg hover:shadow-primary-500/10 transition-all duration-300 min-h-[280px]"
+                  className="group relative flex flex-col items-center justify-center p-8 rounded-xl border-2 border-primary-300 dark:border-primary-700 bg-gradient-to-br from-primary-50/50 to-purple-50/50 dark:from-primary-900/20 dark:to-purple-900/20 hover:border-primary-500 dark:hover:border-primary-500 hover:shadow-lg hover:shadow-primary-500/10 transition-all duration-300 min-h-[280px]"
                 >
                   <div className="absolute top-4 right-4">
                     <span className="px-2 py-1 text-xs font-semibold bg-gradient-to-r from-primary-500 to-purple-500 text-white rounded-full">
@@ -563,7 +627,7 @@ export function NewListing() {
                 <button
                   type="button"
                   onClick={() => setUploadMode("manual")}
-                  className="group flex flex-col items-center justify-center p-8 rounded-xl border-2 border-dashed border-dark-300 dark:border-dark-600 bg-dark-50/50 dark:bg-dark-800/50 hover:border-dark-400 dark:hover:border-dark-500 hover:bg-dark-100/50 dark:hover:bg-dark-800 transition-all duration-300 min-h-[280px]"
+                  className="group flex flex-col items-center justify-center p-8 rounded-xl border-2 border-dark-300 dark:border-dark-600 bg-dark-50/50 dark:bg-dark-800/50 hover:border-dark-400 dark:hover:border-dark-500 hover:bg-dark-100/50 dark:hover:bg-dark-800 transition-all duration-300 min-h-[280px]"
                 >
                   <div className="h-16 w-16 rounded-2xl bg-dark-200 dark:bg-dark-700 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
                     <Upload className="h-8 w-8 text-dark-500 dark:text-dark-400" />
@@ -673,6 +737,23 @@ export function NewListing() {
                 onImagesChange={handleImagesChange}
               />
 
+              {attemptedSubmit && images.length === 0 && (
+                <p className="mt-3 text-sm text-red-500 flex items-center gap-1">
+                  <svg
+                    className="w-4 h-4"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  At least one image is required
+                </p>
+              )}
+
               {authError && !isLoadingUser && (
                 <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
                   {authError}{" "}
@@ -708,9 +789,29 @@ export function NewListing() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., Vintage Nike Air Jordan 1 Retro High OG"
-              className="w-full px-4 py-2 rounded-lg border border-dark-300 dark:border-dark-700 bg-white dark:bg-dark-800 text-dark-900 dark:text-dark-50 placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className={`w-full px-4 py-2 rounded-lg border bg-white dark:bg-dark-800 text-dark-900 dark:text-dark-50 placeholder-dark-400 focus:outline-none focus:ring-2 transition-colors ${
+                attemptedSubmit && !title
+                  ? "border-red-500 dark:border-red-500 focus:ring-red-500"
+                  : "border-dark-300 dark:border-dark-700 focus:ring-primary-500"
+              }`}
               required
             />
+            {attemptedSubmit && !title && (
+              <p className="mt-1.5 text-sm text-red-500 flex items-center gap-1">
+                <svg
+                  className="w-4 h-4"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Title is required
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -780,7 +881,11 @@ export function NewListing() {
                 Price
               </label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-500">
+                <span
+                  className={`absolute left-4 top-1/2 -translate-y-1/2 ${
+                    attemptedSubmit && !price ? "text-red-500" : "text-dark-500"
+                  }`}
+                >
                   $
                 </span>
                 <input
@@ -791,10 +896,30 @@ export function NewListing() {
                   placeholder="0.00"
                   step="0.01"
                   min="0"
-                  className="w-full pl-8 pr-4 py-2 rounded-lg border border-dark-300 dark:border-dark-700 bg-white dark:bg-dark-800 text-dark-900 dark:text-dark-50 placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className={`w-full pl-8 pr-4 py-2 rounded-lg border bg-white dark:bg-dark-800 text-dark-900 dark:text-dark-50 placeholder-dark-400 focus:outline-none focus:ring-2 transition-colors ${
+                    attemptedSubmit && !price
+                      ? "border-red-500 dark:border-red-500 focus:ring-red-500"
+                      : "border-dark-300 dark:border-dark-700 focus:ring-primary-500"
+                  }`}
                   required
                 />
               </div>
+              {attemptedSubmit && !price && (
+                <p className="mt-1.5 text-sm text-red-500 flex items-center gap-1">
+                  <svg
+                    className="w-4 h-4"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Price is required
+                </p>
+              )}
             </div>
           </div>
 
@@ -811,34 +936,41 @@ export function NewListing() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe your item... or let AI generate it for you!"
               rows={4}
-              className="w-full px-4 py-2 rounded-lg border border-dark-300 dark:border-dark-700 bg-white dark:bg-dark-800 text-dark-900 dark:text-dark-50 placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+              className="w-full px-4 py-2 rounded-lg border border-dark-300 dark:border-dark-700 bg-white dark:bg-dark-800 text-dark-900 dark:text-dark-50 placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-y min-h-[100px]"
             />
           </div>
 
-          {/* AI Generation Button */}
+          {/* AI Generation Toggle */}
           <div className="flex items-center justify-between pt-4 border-t border-dark-200 dark:border-dark-800">
             <div className="flex items-center gap-2 text-sm text-dark-600 dark:text-dark-400">
               <Sparkles className="h-4 w-4" />
-              <span>Let AI optimize your listing</span>
+              <span>Auto-generate with AI</span>
             </div>
-            <button
-              type="button"
-              onClick={handleGenerateWithAI}
-              disabled={generatingListing || !category || !condition}
-              className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {generatingListing ? (
-                <>
+            <div className="flex items-center gap-3">
+              {generatingListing && (
+                <div className="flex items-center gap-2 text-sm text-primary-600 dark:text-primary-400">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  Generate with AI
-                </>
+                  <span>Generating...</span>
+                </div>
               )}
-            </button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoGenerateAI}
+                onClick={() => handleToggleAutoGenerateAI(!autoGenerateAI)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
+                  autoGenerateAI
+                    ? "bg-gradient-to-r from-purple-500 to-pink-500"
+                    : "bg-dark-300 dark:bg-dark-600"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform ${
+                    autoGenerateAI ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           {/* AI Generation Errors */}
@@ -877,7 +1009,13 @@ export function NewListing() {
         </div>
 
         {/* Marketplace Selection */}
-        <div className="bg-white dark:bg-dark-900 rounded-xl border border-dark-200 dark:border-dark-800 p-6">
+        <div
+          className={`bg-white dark:bg-dark-900 rounded-xl border p-6 transition-colors ${
+            attemptedSubmit && selectedMarketplaces.length === 0
+              ? "border-red-500 dark:border-red-500"
+              : "border-dark-200 dark:border-dark-800"
+          }`}
+        >
           <h2 className="text-lg font-semibold text-dark-900 dark:text-dark-50 mb-4">
             Select Marketplaces
           </h2>
@@ -885,6 +1023,18 @@ export function NewListing() {
             selected={selectedMarketplaces}
             onChange={setSelectedMarketplaces}
           />
+          {attemptedSubmit && selectedMarketplaces.length === 0 && (
+            <p className="mt-3 text-sm text-red-500 flex items-center gap-1">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Select at least one marketplace
+            </p>
+          )}
         </div>
 
         {/* Submit Button */}

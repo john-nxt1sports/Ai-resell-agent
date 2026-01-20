@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { OfflineBanner } from "@/components/OfflineBanner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -90,7 +91,10 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${poppins.variable} font-sans antialiased`}
       >
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <OfflineBanner />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
