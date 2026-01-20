@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "AI Resell Agent - Marketplace Poster",
+  "version": "1.0.0",
+  "description": "Automatically post your listings to Poshmark, Mercari, eBay, and more from AI Resell Agent",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage", "tabs", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://poshmark.com/*",
+    "https://www.poshmark.com/*",
+    "https://mercari.com/*",
+    "https://www.mercari.com/*",
+    "https://ebay.com/*",
+    "https://www.ebay.com/*",
+    "https://depop.com/*",
+    "https://www.depop.com/*",
+    "http://localhost:3000/*",
+    "https://*.vercel.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*", "https://*.vercel.app/*"],
+      "js": ["content-scripts/webapp.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://poshmark.com/*", "https://www.poshmark.com/*"],
+      "js": ["content-scripts/poshmark.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://mercari.com/*", "https://www.mercari.com/*"],
+      "js": ["content-scripts/mercari.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://ebay.com/*", "https://www.ebay.com/*"],
+      "js": ["content-scripts/ebay.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "externally_connectable": {
+    "matches": ["http://localhost:3000/*", "https://*.vercel.app/*"]
+  }
+}

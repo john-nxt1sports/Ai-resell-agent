@@ -1,0 +1,315 @@
+/**
+ * AI Resell Agent - Mercari Content Script
+ * Handles login detection and automated listing creation on Mercari
+ */
+
+console.log("[AI Resell Agent] Mercari content script loaded");
+
+// Check if user is logged in
+function checkLoginStatus() {
+  // Mercari shows different elements when logged in
+  const profileMenu = document.querySelector(
+    '[data-testid="AccountMenu"], [aria-label="Account menu"]',
+  );
+  const loginButton = document.querySelector(
+    'a[href*="/login"], button:contains("Log in")',
+  );
+  const sellButton = document.querySelector('a[href="/sell"]');
+
+  // Check for user-specific elements
+  const isLoggedIn = !!(profileMenu || (sellButton && !loginButton));
+
+  console.log("[AI Resell Agent] Mercari login status:", isLoggedIn);
+
+  // Notify background script
+  chrome.runtime.sendMessage({
+    type: "UPDATE_LOGIN_STATUS",
+    marketplace: "mercari",
+    isLoggedIn,
+  });
+
+  return isLoggedIn;
+}
+
+// Wait for element to appear
+function waitForElement(selector, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+
+    const check = () => {
+      const element = document.querySelector(selector);
+      if (element) {
+        resolve(element);
+        return;
+      }
+
+      if (Date.now() - startTime > timeout) {
+        reject(new Error(`Element ${selector} not found within ${timeout}ms`));
+        return;
+      }
+
+      setTimeout(check, 200);
+    };
+
+    check();
+  });
+}
+
+// Simulate human-like typing
+async function humanType(element, text) {
+  element.focus();
+  element.value = "";
+
+  for (const char of text) {
+    element.value += char;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    await sleep(50 + Math.random() * 50);
+  }
+
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+  element.dispatchEvent(new Event("blur", { bubbles: true }));
+}
+
+// Sleep helper
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Click element with human-like behavior
+async function humanClick(element) {
+  element.scrollIntoView({ behavior: "smooth", block: "center" });
+  await sleep(300);
+  element.click();
+}
+
+// Upload images from URLs
+async function uploadImages(imageUrls) {
+  try {
+    const fileInput = await waitForElement(
+      'input[type="file"][accept*="image"]',
+    );
+
+    // Fetch images and create File objects
+    const files = await Promise.all(
+      imageUrls.slice(0, 12).map(async (url, index) => {
+        // Mercari allows up to 12 images
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return new File([blob], `image_${index}.jpg`, { type: "image/jpeg" });
+      }),
+    );
+
+    // Create a DataTransfer to simulate file selection
+    const dataTransfer = new DataTransfer();
+    files.forEach((file) => dataTransfer.items.add(file));
+    fileInput.files = dataTransfer.files;
+
+    // Trigger change event
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // Wait for upload to complete
+    await sleep(2000 * files.length);
+
+    return true;
+  } catch (error) {
+    console.error("[AI Resell Agent] Error uploading images:", error);
+    return false;
+  }
+}
+
+// Select condition from dropdown
+async function selectCondition(condition) {
+  const conditionMap = {
+    new: "New",
+    like_new: "Like new",
+    good: "Good",
+    fair: "Fair",
+    poor: "Poor",
+  };
+
+  try {
+    // Click condition dropdown
+    const conditionBtn = await waitForElement(
+      '[data-testid="condition-select"], button:contains("Condition"), [aria-label*="condition" i]',
+    );
+    if (conditionBtn) {
+      await humanClick(conditionBtn);
+      await sleep(500);
+
+      // Find matching option
+      const targetCondition =
+        conditionMap[condition?.toLowerCase()] || condition;
+      const options = document.querySelectorAll(
+        '[role="option"], [role="menuitem"], li',
+      );
+
+      for (const option of options) {
+        if (
+          option.textContent
+            .toLowerCase()
+            .includes(targetCondition.toLowerCase())
+        ) {
+          await humanClick(option);
+          await sleep(300);
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    console.log("[AI Resell Agent] Could not select condition:", error);
+  }
+}
+
+// Fill in the listing form
+async function fillListingForm(listing) {
+  console.log("[AI Resell Agent] Filling Mercari listing form:", listing);
+
+  try {
+    // Wait for page to be ready
+    await sleep(2000);
+
+    // Upload images first
+    if (listing.images && listing.images.length > 0) {
+      console.log("[AI Resell Agent] Uploading images...");
+      await uploadImages(listing.images);
+      await sleep(2000);
+    }
+
+    // Fill title
+    const titleInput = await waitForElement(
+      'input[name="name"], input[data-testid="title-input"], input[placeholder*="title" i]',
+    );
+    if (titleInput) {
+      await humanType(titleInput, listing.title);
+      await sleep(500);
+    }
+
+    // Fill description
+    const descInput = await waitForElement(
+      'textarea[name="description"], textarea[data-testid="description-input"], textarea[placeholder*="description" i]',
+    );
+    if (descInput) {
+      await humanType(descInput, listing.description || "");
+      await sleep(500);
+    }
+
+    // Select condition
+    if (listing.condition) {
+      await selectCondition(listing.condition);
+    }
+
+    // Fill brand
+    if (listing.brand) {
+      const brandInput = await waitForElement(
+        'input[name="brand"], input[data-testid="brand-input"], input[placeholder*="brand" i]',
+      );
+      if (brandInput) {
+        await humanType(brandInput, listing.brand);
+        await sleep(500);
+      }
+    }
+
+    // Fill price
+    const priceInput = await waitForElement(
+      'input[name="price"], input[data-testid="price-input"], input[placeholder*="price" i]',
+    );
+    if (priceInput) {
+      await humanType(priceInput, listing.price.toString());
+      await sleep(500);
+    }
+
+    // Shipping - Mercari often has shipping options
+    try {
+      const shippingOptions = document.querySelectorAll(
+        '[data-testid="shipping-option"], input[name="shipping"]',
+      );
+      if (shippingOptions.length > 0) {
+        // Select first shipping option (usually seller pays)
+        await humanClick(shippingOptions[0]);
+      }
+    } catch (e) {
+      console.log("[AI Resell Agent] Could not select shipping");
+    }
+
+    console.log("[AI Resell Agent] Form filled successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("[AI Resell Agent] Error filling form:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Submit the listing
+async function submitListing() {
+  try {
+    const submitBtn = await waitForElement(
+      'button[data-testid="submit-btn"], button[type="submit"]:contains("List"), button:contains("List item")',
+    );
+
+    if (submitBtn) {
+      await humanClick(submitBtn);
+      await sleep(3000);
+
+      // Check for success
+      const currentUrl = window.location.href;
+
+      if (currentUrl.includes("/item/") || currentUrl.includes("/product/")) {
+        return { success: true, url: currentUrl };
+      }
+
+      // Look for success message
+      const successMessage = document.querySelector(
+        '[data-testid="success-message"], .success',
+      );
+      if (successMessage) {
+        return { success: true };
+      }
+    }
+
+    return { success: false, error: "Could not complete submission" };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log("[AI Resell Agent] Mercari received message:", message.type);
+
+  switch (message.type) {
+    case "CHECK_LOGIN_STATUS":
+      const isLoggedIn = checkLoginStatus();
+      sendResponse({ isLoggedIn });
+      break;
+
+    case "FILL_LISTING":
+      (async () => {
+        const fillResult = await fillListingForm(message.listing);
+        sendResponse(fillResult);
+      })();
+      return true; // Keep channel open for async
+
+    case "SUBMIT_LISTING":
+      (async () => {
+        const submitResult = await submitListing();
+
+        // Notify background of result
+        chrome.runtime.sendMessage({
+          type: submitResult.success ? "LISTING_CREATED" : "LISTING_FAILED",
+          marketplace: "mercari",
+          listingData: message.listing,
+          result: submitResult,
+          error: submitResult.error,
+        });
+
+        sendResponse(submitResult);
+      })();
+      return true;
+
+    default:
+      sendResponse({ success: false, error: "Unknown message type" });
+  }
+});
+
+// Check login status on page load
+setTimeout(checkLoginStatus, 1000);
