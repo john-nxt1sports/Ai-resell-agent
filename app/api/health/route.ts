@@ -1,156 +1,42 @@
-/**
- * Health Check Endpoint
- * Provides system health status for monitoring and load balancers
- */
-
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
 
-interface HealthStatus {
-  status: "healthy" | "degraded" | "unhealthy";
-  timestamp: string;
-  version: string;
-  checks: {
-    database: {
-      status: "up" | "down";
-      latency?: number;
-    };
-    redis?: {
-      status: "up" | "down";
-      latency?: number;
-    };
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  const startTime = Date.now();
+  
+  const checks = {
+    database: false,
+    databaseLatency: 0,
+    timestamp: new Date().toISOString(),
+    version: process.env.npm_package_version || '1.0.0',
   };
-}
 
-/**
- * Check database connectivity
- */
-async function checkDatabase(): Promise<{
-  status: "up" | "down";
-  latency?: number;
-}> {
   try {
-    const start = Date.now();
+    // Check database connection
+    const dbStart = Date.now();
     const supabase = await createClient();
+    const { error } = await supabase.from('profiles').select('count').limit(1).single();
+    checks.databaseLatency = Date.now() - dbStart;
+    checks.database = !error;
 
-    // Simple query to check connectivity
-    const { error } = await supabase.from("profiles").select("id").limit(1);
+    const totalLatency = Date.now() - startTime;
+    const isHealthy = checks.database && checks.databaseLatency < 1000;
 
-    const latency = Date.now() - start;
-
-    if (error) {
-      logger.error("Health check: Database check failed", { error: error.message });
-      return { status: "down" };
-    }
-
-    return { status: "up", latency };
-  } catch (error) {
-    logger.error("Health check: Database check error", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { status: "down" };
-  }
-}
-
-/**
- * Check Redis connectivity (optional)
- */
-async function checkRedis(): Promise<{
-  status: "up" | "down";
-  latency?: number;
-}> {
-  // Only check Redis if it's configured
-  if (!process.env.REDIS_URL) {
-    return { status: "up" }; // Skip check if not configured
-  }
-
-  try {
-    // TODO: Implement Redis health check
-    // For now, just return up
-    return { status: "up" };
-  } catch (error) {
-    logger.error("Health check: Redis check error", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { status: "down" };
-  }
-}
-
-/**
- * GET /api/health
- * Health check endpoint
- */
-export async function GET(): Promise<Response> {
-  try {
-    const startTime = Date.now();
-
-    // Run health checks in parallel
-    const [databaseCheck, redisCheck] = await Promise.all([
-      checkDatabase(),
-      checkRedis(),
-    ]);
-
-    // Determine overall status
-    let overallStatus: "healthy" | "degraded" | "unhealthy" = "healthy";
-
-    if (databaseCheck.status === "down") {
-      overallStatus = "unhealthy";
-    } else if (redisCheck.status === "down") {
-      overallStatus = "degraded";
-    }
-
-    const healthStatus: HealthStatus = {
-      status: overallStatus,
-      timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version || "1.0.0",
-      checks: {
-        database: databaseCheck,
-        redis: redisCheck,
-      },
-    };
-
-    const duration = Date.now() - startTime;
-
-    // Log health check
-    if (overallStatus !== "healthy") {
-      logger.warn("Health check: System not healthy", {
-        status: overallStatus,
-        duration,
-        checks: healthStatus.checks,
-      });
-    } else {
-      logger.debug("Health check: System healthy", {
-        duration,
-      });
-    }
-
-    // Return appropriate status code
-    const statusCode = overallStatus === "healthy" ? 200 : overallStatus === "degraded" ? 200 : 503;
-
-    return new Response(JSON.stringify(healthStatus), {
-      status: statusCode,
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-      },
+    return NextResponse.json({
+      status: isHealthy ? 'healthy' : 'degraded',
+      checks,
+      latency: totalLatency,
+    }, { 
+      status: isHealthy ? 200 : 503 
     });
   } catch (error) {
-    logger.error("Health check: Unexpected error", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-
-    return new Response(
-      JSON.stringify({
-        status: "unhealthy",
-        timestamp: new Date().toISOString(),
-        error: "Health check failed",
-      }),
-      {
-        status: 503,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    return NextResponse.json({
+      status: 'unhealthy',
+      checks,
+      error: 'Health check failed',
+      latency: Date.now() - startTime,
+    }, { status: 503 });
   }
 }

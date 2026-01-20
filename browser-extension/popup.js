@@ -9,7 +9,15 @@ const MARKETPLACES = [
   { id: "depop", name: "Depop", loginUrl: "https://www.depop.com/login" },
 ];
 
-const APP_URL = "http://localhost:3000";
+// Get APP_URL from storage or use default
+let APP_URL = "http://localhost:3000";
+
+// Load configuration on startup
+chrome.storage.local.get(['appUrl'], (result) => {
+  if (result.appUrl) {
+    APP_URL = result.appUrl;
+  }
+});
 
 let marketplaceStatuses = {};
 let pendingJobs = [];
