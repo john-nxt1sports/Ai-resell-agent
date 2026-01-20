@@ -1,11 +1,26 @@
 # 🤖 AI Resell Agent
 
+**Status**: ✅ **PRODUCTION READY** - Comprehensive security audit completed (January 2026)
+
 A sleek, modern, and professional **AI-powered listing automation platform** that automatically posts products to multiple marketplaces like **Poshmark**, **Mercari**, and **eBay**.
 
-![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?style=flat-square&logo=typescript)
-![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8?style=flat-square&logo=tailwindcss)
+![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue?style=flat-square&logo=typescript)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4.1-38bdf8?style=flat-square&logo=tailwindcss)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+![Security](https://img.shields.io/badge/Security-A--Grade-success?style=flat-square)
+
+> 🔐 **Enterprise-Grade Security**: Complete security audit performed, all critical vulnerabilities resolved, AES-256-GCM encryption implemented for sensitive data.
+
+---
+
+## 🚀 Quick Start
+
+**New to deployment?** See [`QUICK_START.md`](QUICK_START.md) for a 5-minute deployment guide.
+
+**Ready to deploy?** See [`DEPLOYMENT.md`](DEPLOYMENT.md) for comprehensive instructions.
+
+**Security review?** See [`AUDIT_REPORT.md`](AUDIT_REPORT.md) for the complete security audit.
 
 ---
 
