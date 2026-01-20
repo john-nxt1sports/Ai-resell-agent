@@ -5,13 +5,15 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**",
+        hostname: "**.supabase.co",
+      },
+      {
+        protocol: "https",
+        hostname: "**.supabase.in",
       },
     ],
   },
-  turbopack: {
-    root: "/Users/johnkeller/My Mac (Johns-MacBook-Pro.local)/Main/Ai-resell-agent",
-  },
+  // Removed hardcoded turbopack root path for production compatibility
 };
 
 module.exports = nextConfig;
