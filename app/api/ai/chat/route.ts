@@ -1,9 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { openRouterClient } from "@/lib/ai/client";
 import { AIMessage } from "@/lib/ai/types";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   try {
+    // Verify authentication
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized - Please log in to use AI chat" },
+        { status: 401 }
+      );
+    }
+
     const { messages, context } = await request.json();
 
     if (!messages || !Array.isArray(messages)) {

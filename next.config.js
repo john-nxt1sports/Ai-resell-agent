@@ -9,9 +9,6 @@ const nextConfig = {
       },
     ],
   },
-  turbopack: {
-    root: "/Users/johnkeller/My Mac (Johns-MacBook-Pro.local)/Main/Ai-resell-agent",
-  },
 };
 
 module.exports = nextConfig;

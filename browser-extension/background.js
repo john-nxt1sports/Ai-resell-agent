@@ -3,9 +3,9 @@
  * Handles communication between the web app and content scripts
  */
 
-// Configuration
+// Configuration - Load from environment or use defaults
 const CONFIG = {
-  APP_URL: "http://localhost:3000", // Change to production URL when deployed
+  APP_URL: typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
   MARKETPLACES: {
     poshmark: {
       baseUrl: "https://poshmark.com",

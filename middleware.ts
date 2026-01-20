@@ -1,8 +1,18 @@
-import { type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { getSecurityHeaders } from "@/lib/security/headers";
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+  // Update session and get response
+  const response = await updateSession(request);
+
+  // Add security headers to all responses
+  const securityHeaders = getSecurityHeaders();
+  Object.entries(securityHeaders).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+
+  return response;
 }
 
 export const config = {
