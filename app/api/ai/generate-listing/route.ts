@@ -1,14 +1,24 @@
 /**
  * AI Listing Generation API Route
  * POST /api/ai/generate-listing
+ * 
+ * Security features:
+ * - Rate limiting (100 requests/hour per user)
+ * - Input validation
+ * - Structured logging
+ * - CSRF protection
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateListing, estimateCost } from "@/lib/ai/service";
 import { ListingGenerationInput, AIModel } from "@/lib/ai/types";
+import { withRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { withLogging, logger } from "@/lib/logger";
+import { withCsrfProtectionConditional } from "@/lib/csrf";
+import { validateRequestBody, ValidationError } from "@/lib/validation";
 
-export async function POST(request: NextRequest) {
+async function handler(request: Request) {
   try {
     // Verify authentication
     const supabase = await createClient();
@@ -18,24 +28,23 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      logger.warn("Unauthorized AI generation attempt", { error: authError?.message });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Parse request body
-    const body = await request.json();
+    // Parse and validate request body
+    const body = await validateRequestBody(request);
     const { input, model } = body as {
       input: ListingGenerationInput;
       model?: AIModel;
     };
 
     if (!input) {
-      return NextResponse.json(
-        { error: "Missing input data" },
-        { status: 400 }
-      );
+      throw new ValidationError("Missing input data");
     }
 
     // Generate listing
+    logger.info("Starting AI listing generation", { userId: user.id, model });
     const startTime = Date.now();
     const listing = await generateListing(input, model);
     const duration = Date.now() - startTime;
@@ -61,6 +70,13 @@ export async function POST(request: NextRequest) {
       success: true,
     });
 
+    logger.info("AI listing generation completed", { 
+      userId: user.id, 
+      tokensUsed, 
+      cost, 
+      duration 
+    });
+
     return NextResponse.json({
       success: true,
       data: listing,
@@ -71,7 +87,21 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("Error in generate-listing API:", error);
+    // Handle validation errors
+    if (error instanceof ValidationError) {
+      logger.warn("Validation error in AI generation", { 
+        field: error.field, 
+        message: error.message 
+      });
+      return NextResponse.json(
+        { error: error.message, field: error.field },
+        { status: 400 }
+      );
+    }
+
+    logger.errorWithStack("Error in generate-listing API", error, {
+      input: request.method,
+    });
 
     // Log failed attempt
     try {
@@ -90,12 +120,21 @@ export async function POST(request: NextRequest) {
         });
       }
     } catch (logError) {
-      console.error("Error logging failure:", logError);
+      logger.error("Error logging AI generation failure", { error: String(logError) });
     }
 
     return NextResponse.json(
-      { error: error.message || "Failed to generate listing" },
+      { error: "Failed to generate listing. Please try again." },
       { status: 500 }
     );
   }
 }
+
+// Apply middleware: Rate limiting -> Logging -> CSRF protection
+export const POST = withRateLimit(
+  withLogging(
+    withCsrfProtectionConditional(handler)
+  ),
+  RATE_LIMITS.AI_GENERATE,
+  'ai-generate'
+);
