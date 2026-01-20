@@ -9,6 +9,12 @@ const nextConfig = {
       },
     ],
   },
+  compiler: {
+    // Remove console.log in production builds (keep console.error and console.warn)
+    removeConsole: process.env.NODE_ENV === 'production' ? { 
+      exclude: ['error', 'warn', 'info'] 
+    } : false,
+  },
 };
 
 module.exports = nextConfig;

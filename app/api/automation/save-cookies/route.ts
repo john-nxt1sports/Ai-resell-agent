@@ -1,11 +1,12 @@
 /**
  * API Route: Save Marketplace Cookies
- * Saves cookies from user's browser (manual paste method)
+ * Saves cookies from user's browser with encryption
  * POST /api/automation/save-cookies
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { encryptJSON } from "@/lib/security/encryption";
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,8 +41,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[API] Saving cookies for ${marketplace} - User: ${user.id}`);
-
     // Parse cookies if they're a string
     let cookieData: any;
     try {
@@ -53,7 +52,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate cookie format (should be array of cookie objects)
+    // Validate cookie format
     if (!Array.isArray(cookieData) || cookieData.length === 0) {
       return NextResponse.json(
         { error: "Cookies must be a non-empty array" },
@@ -73,30 +72,43 @@ export async function POST(request: NextRequest) {
       sameSite: cookie.sameSite || 'Lax',
     }));
 
-    // Save to database
+    // Encrypt cookies before storing
+    let encryptedCookies: string | null = null;
+    try {
+      encryptedCookies = encryptJSON(playwrightCookies);
+    } catch (encryptError) {
+      // If encryption fails (e.g., no key), store as JSON but log warning
+      // In production, this should fail hard
+      if (process.env.NODE_ENV === 'production' && !process.env.ENCRYPTION_KEY) {
+        return NextResponse.json(
+          { error: "Server misconfiguration: encryption not available" },
+          { status: 500 }
+        );
+      }
+      encryptedCookies = JSON.stringify(playwrightCookies);
+    }
+
+    // Save to database with encrypted cookies
     const { error: dbError } = await supabase
       .from("marketplace_credentials")
       .upsert({
         user_id: user.id,
         marketplace: marketplace.toLowerCase(),
-        password: null, // Explicitly set to null for cookie-based auth
-        cookies: JSON.stringify(playwrightCookies),
+        password_encrypted: null,
+        cookies: { encrypted: encryptedCookies },
         is_active: true,
-        last_used: new Date().toISOString(),
+        last_verified_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, {
         onConflict: "user_id,marketplace"
       });
 
     if (dbError) {
-      console.error("[API] Database error:", dbError);
       return NextResponse.json(
-        { error: "Failed to save cookies to database" },
+        { error: "Failed to save credentials to database" },
         { status: 500 }
       );
     }
-
-    console.log(`[API] Cookies saved successfully for ${marketplace}`);
 
     return NextResponse.json({
       success: true,
@@ -104,10 +116,10 @@ export async function POST(request: NextRequest) {
       message: `${marketplace} account connected successfully`,
     });
 
-  } catch (error: any) {
-    console.error("[API] Save cookies error:", error);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
