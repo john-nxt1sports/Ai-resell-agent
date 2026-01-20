@@ -9,7 +9,7 @@
  * - CSRF protection
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateListing, estimateCost } from "@/lib/ai/service";
 import { ListingGenerationInput, AIModel } from "@/lib/ai/types";
@@ -18,7 +18,7 @@ import { withLogging, logger } from "@/lib/logger";
 import { withCsrfProtectionConditional } from "@/lib/csrf";
 import { validateRequestBody, ValidationError } from "@/lib/validation";
 
-async function handler(request: NextRequest) {
+async function handler(request: Request) {
   try {
     // Verify authentication
     const supabase = await createClient();

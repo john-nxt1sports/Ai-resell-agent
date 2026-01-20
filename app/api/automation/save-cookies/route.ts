@@ -10,7 +10,7 @@
  * - CSRF protection
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { withRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { withLogging, logger } from "@/lib/logger";
@@ -21,7 +21,7 @@ import {
   ValidationError 
 } from "@/lib/validation";
 
-async function handler(request: NextRequest) {
+async function handler(request: Request) {
   try {
     // Get authenticated user
     const supabase = await createClient();
