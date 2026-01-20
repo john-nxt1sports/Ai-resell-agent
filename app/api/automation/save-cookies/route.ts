@@ -2,63 +2,77 @@
  * API Route: Save Marketplace Cookies
  * Saves cookies from user's browser (manual paste method)
  * POST /api/automation/save-cookies
+ * 
+ * Security features:
+ * - Rate limiting
+ * - Input validation
+ * - Structured logging (cookies redacted)
+ * - CSRF protection
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { withRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { withLogging, logger } from "@/lib/logger";
+import { withCsrfProtectionConditional } from "@/lib/csrf";
+import { 
+  validateRequestBody, 
+  validateMarketplace, 
+  ValidationError 
+} from "@/lib/validation";
 
-export async function POST(request: NextRequest) {
+async function handler(request: NextRequest) {
   try {
     // Get authenticated user
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      logger.warn("Unauthorized cookie save attempt");
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
       );
     }
 
-    // Get request body
-    const body = await request.json();
+    // Parse and validate request body
+    const body = await validateRequestBody(request);
     const { marketplace, cookies } = body;
 
     if (!marketplace || !cookies) {
-      return NextResponse.json(
-        { error: "Marketplace and cookies are required" },
-        { status: 400 }
-      );
+      throw new ValidationError("Marketplace and cookies are required");
     }
 
     // Validate marketplace
-    const validMarketplaces = ["mercari", "poshmark", "ebay", "depop"];
-    if (!validMarketplaces.includes(marketplace.toLowerCase())) {
-      return NextResponse.json(
-        { error: `Invalid marketplace. Must be one of: ${validMarketplaces.join(", ")}` },
-        { status: 400 }
-      );
-    }
+    validateMarketplace(marketplace);
 
-    console.log(`[API] Saving cookies for ${marketplace} - User: ${user.id}`);
+    logger.info("Saving marketplace cookies", { 
+      userId: user.id, 
+      marketplace 
+    });
 
     // Parse cookies if they're a string
     let cookieData: any;
     try {
       cookieData = typeof cookies === 'string' ? JSON.parse(cookies) : cookies;
     } catch (parseError) {
-      return NextResponse.json(
-        { error: "Invalid cookie format. Must be valid JSON array." },
-        { status: 400 }
-      );
+      throw new ValidationError("Invalid cookie format. Must be valid JSON array.", "cookies");
     }
 
     // Validate cookie format (should be array of cookie objects)
     if (!Array.isArray(cookieData) || cookieData.length === 0) {
-      return NextResponse.json(
-        { error: "Cookies must be a non-empty array" },
-        { status: 400 }
-      );
+      throw new ValidationError("Cookies must be a non-empty array", "cookies");
+    }
+
+    // Validate cookie structure
+    for (let i = 0; i < cookieData.length; i++) {
+      const cookie = cookieData[i];
+      if (!cookie.name || !cookie.value) {
+        throw new ValidationError(
+          `Cookie at index ${i} missing required fields (name, value)`,
+          "cookies"
+        );
+      }
     }
 
     // Convert to Playwright cookie format
@@ -73,6 +87,9 @@ export async function POST(request: NextRequest) {
       sameSite: cookie.sameSite || 'Lax',
     }));
 
+    // TODO: Encrypt cookies before storing
+    // For now, storing as JSON (security note: should be encrypted)
+    
     // Save to database
     const { error: dbError } = await supabase
       .from("marketplace_credentials")
@@ -89,14 +106,21 @@ export async function POST(request: NextRequest) {
       });
 
     if (dbError) {
-      console.error("[API] Database error:", dbError);
+      logger.error("Database error saving cookies", { 
+        userId: user.id, 
+        marketplace, 
+        error: dbError.message 
+      });
       return NextResponse.json(
-        { error: "Failed to save cookies to database" },
+        { error: "Failed to save cookies" },
         { status: 500 }
       );
     }
 
-    console.log(`[API] Cookies saved successfully for ${marketplace}`);
+    logger.info("Cookies saved successfully", { 
+      userId: user.id, 
+      marketplace 
+    });
 
     return NextResponse.json({
       success: true,
@@ -105,10 +129,31 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error("[API] Save cookies error:", error);
+    // Handle validation errors
+    if (error instanceof ValidationError) {
+      logger.warn("Validation error saving cookies", { 
+        field: error.field, 
+        message: error.message 
+      });
+      return NextResponse.json(
+        { error: error.message, field: error.field },
+        { status: 400 }
+      );
+    }
+
+    logger.errorWithStack("Save cookies error", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
 }
+
+// Apply middleware: Rate limiting -> Logging -> CSRF protection
+export const POST = withRateLimit(
+  withLogging(
+    withCsrfProtectionConditional(handler)
+  ),
+  RATE_LIMITS.AUTOMATION_QUEUE,
+  'save-cookies'
+);
