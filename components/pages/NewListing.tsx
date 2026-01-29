@@ -21,6 +21,7 @@ import { useGenerateListing, useAnalyzeImages } from "@/lib/ai";
 import { uploadImages } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { useExtension } from "@/lib/hooks/useExtension";
 
 const AI_STYLES = [
   {
@@ -368,9 +369,13 @@ export function NewListing() {
           ? uploadedImageUrls
           : images.map((img) => img.preview);
 
-      // Ensure condition is properly formatted
+      // Ensure condition is a valid database value
+      const validConditions = ["new", "like_new", "good", "fair", "poor"];
+      const normalizedCondition = condition?.toLowerCase().trim();
       const validCondition =
-        condition && condition.trim() !== "" ? condition : undefined;
+        normalizedCondition && validConditions.includes(normalizedCondition)
+          ? normalizedCondition
+          : undefined;
 
       // Save to database via Zustand store
       const result = await addListing(currentUser.id, {
@@ -392,7 +397,7 @@ export function NewListing() {
 
       setIsProcessing(false);
 
-      // Queue automated posting to selected marketplaces
+      // Queue automated posting to selected marketplaces via Chrome extension
       if (selectedMarketplaces.length > 0) {
         try {
           const marketplaceIds =
@@ -402,6 +407,7 @@ export function NewListing() {
                   typeof m === "string" ? m : m.id,
                 );
 
+          // First, save to database API for record keeping
           const response = await fetch("/api/automation/queue-listing", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -413,19 +419,50 @@ export function NewListing() {
 
           const queueResult = await response.json();
 
+          // Also send directly to Chrome extension for immediate processing
+          try {
+            const listingData = {
+              title,
+              description: description || aiGeneratedData?.description || "",
+              price: parseFloat(price),
+              images: imageUrls,
+              category: category || undefined,
+              condition: validCondition,
+              brand: brand || undefined,
+              size: undefined, // Add size field if available
+            };
+
+            // Post message to extension via content script
+            window.postMessage(
+              {
+                type: "AI_RESELL_AGENT_QUEUE_LISTINGS",
+                listings: [listingData],
+                marketplaces: marketplaceIds,
+              },
+              "*",
+            );
+
+            console.log("[NewListing] Sent listing to extension", listingData);
+          } catch (extError) {
+            console.log(
+              "[NewListing] Extension not available, using API queue",
+              extError,
+            );
+          }
+
           if (queueResult.success) {
             alert(
-              `🎉 Listing created and queued for ${selectedMarketplaces.length} marketplace(s)! Check your dashboard for posting status.`,
+              `🎉 Listing created! Open the ListingsAI extension and click "Start Posting" to post to ${selectedMarketplaces.length} marketplace(s).`,
             );
           } else {
             alert(
-              "⚠️ Listing created but automation failed. You may need to connect your marketplace accounts in Settings.",
+              "⚠️ Listing created but automation queue failed. Make sure the Chrome extension is installed and you're logged into your marketplaces.",
             );
           }
         } catch (automationError) {
           console.error("Automation error:", automationError);
           alert(
-            "⚠️ Listing created but couldn't queue automation. Please try posting from your dashboard.",
+            "⚠️ Listing created! Open the extension popup and click 'Start Posting' to post to marketplaces.",
           );
         }
       } else {

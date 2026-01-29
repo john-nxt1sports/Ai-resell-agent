@@ -245,9 +245,25 @@ async function fillListingForm(listing) {
 async function submitListing() {
   try {
     // eBay may have multiple steps - look for "List item" or "Submit" button
-    const submitBtn = await waitForElement(
-      'button[data-testid="submit-btn"], button:contains("List item"), button:contains("List it"), input[type="submit"]',
+    let submitBtn = document.querySelector(
+      'button[data-testid="submit-btn"], input[type="submit"]',
     );
+
+    // If not found, look for button with "List" text
+    if (!submitBtn) {
+      const buttons = document.querySelectorAll("button");
+      for (const btn of buttons) {
+        const text = btn.textContent.toLowerCase();
+        if (
+          text.includes("list item") ||
+          text.includes("list it") ||
+          text.includes("submit")
+        ) {
+          submitBtn = btn;
+          break;
+        }
+      }
+    }
 
     if (submitBtn) {
       await humanClick(submitBtn);

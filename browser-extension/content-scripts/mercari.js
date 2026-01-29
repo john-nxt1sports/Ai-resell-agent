@@ -11,13 +11,24 @@ function checkLoginStatus() {
   const profileMenu = document.querySelector(
     '[data-testid="AccountMenu"], [aria-label="Account menu"]',
   );
-  const loginButton = document.querySelector(
-    'a[href*="/login"], button:contains("Log in")',
-  );
+  const loginLink = document.querySelector('a[href*="/login"]');
   const sellButton = document.querySelector('a[href="/sell"]');
 
+  // Also check for login button by looking at button text
+  const allButtons = document.querySelectorAll("button");
+  let hasLoginButton = !!loginLink;
+  for (const btn of allButtons) {
+    if (
+      btn.textContent.toLowerCase().includes("log in") ||
+      btn.textContent.toLowerCase().includes("sign in")
+    ) {
+      hasLoginButton = true;
+      break;
+    }
+  }
+
   // Check for user-specific elements
-  const isLoggedIn = !!(profileMenu || (sellButton && !loginButton));
+  const isLoggedIn = !!(profileMenu || (sellButton && !hasLoginButton));
 
   console.log("[AI Resell Agent] Mercari login status:", isLoggedIn);
 
@@ -128,10 +139,22 @@ async function selectCondition(condition) {
   };
 
   try {
-    // Click condition dropdown
-    const conditionBtn = await waitForElement(
-      '[data-testid="condition-select"], button:contains("Condition"), [aria-label*="condition" i]',
+    // Click condition dropdown - try multiple selectors
+    let conditionBtn = document.querySelector(
+      '[data-testid="condition-select"], [aria-label*="condition" i]',
     );
+
+    // If not found, look for button with "Condition" text
+    if (!conditionBtn) {
+      const buttons = document.querySelectorAll("button");
+      for (const btn of buttons) {
+        if (btn.textContent.includes("Condition")) {
+          conditionBtn = btn;
+          break;
+        }
+      }
+    }
+
     if (conditionBtn) {
       await humanClick(conditionBtn);
       await sleep(500);
@@ -242,9 +265,26 @@ async function fillListingForm(listing) {
 // Submit the listing
 async function submitListing() {
   try {
-    const submitBtn = await waitForElement(
-      'button[data-testid="submit-btn"], button[type="submit"]:contains("List"), button:contains("List item")',
+    // Try to find submit button with multiple approaches
+    let submitBtn = document.querySelector(
+      'button[data-testid="submit-btn"], button[type="submit"]',
     );
+
+    // If not found, look for button with "List" text
+    if (!submitBtn) {
+      const buttons = document.querySelectorAll("button");
+      for (const btn of buttons) {
+        const text = btn.textContent.toLowerCase();
+        if (
+          text.includes("list item") ||
+          text === "list" ||
+          text.includes("publish")
+        ) {
+          submitBtn = btn;
+          break;
+        }
+      }
+    }
 
     if (submitBtn) {
       await humanClick(submitBtn);

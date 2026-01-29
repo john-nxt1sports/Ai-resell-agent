@@ -9,9 +9,11 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "tabs", "activeTab", "scripting"],
+  "permissions": ["storage", "tabs", "activeTab", "scripting", "notifications"],
   "host_permissions": [
     "https://ai-resell-agent.vercel.app/*",
+    "https://*.listingsai.com/*",
+    "http://localhost:3000/*",
     "https://poshmark.com/*",
     "https://www.poshmark.com/*",
     "https://mercari.com/*",
@@ -25,23 +27,27 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://ai-resell-agent.vercel.app/*"],
+      "matches": [
+        "https://ai-resell-agent.vercel.app/*",
+        "https://*.listingsai.com/*",
+        "http://localhost:3000/*"
+      ],
       "js": ["content-scripts/webapp.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://poshmark.com/*", "https://www.poshmark.com/*"],
-      "js": ["content-scripts/poshmark.js"],
+      "js": ["content-scripts/agentic-core.js", "content-scripts/poshmark.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://mercari.com/*", "https://www.mercari.com/*"],
-      "js": ["content-scripts/mercari.js"],
+      "js": ["content-scripts/agentic-core.js", "content-scripts/mercari.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://ebay.com/*", "https://www.ebay.com/*"],
-      "js": ["content-scripts/ebay.js"],
+      "js": ["content-scripts/agentic-core.js", "content-scripts/ebay.js"],
       "run_at": "document_idle"
     }
   ],
@@ -55,6 +61,10 @@
     }
   },
   "externally_connectable": {
-    "matches": ["https://ai-resell-agent.vercel.app/*"]
+    "matches": [
+      "https://ai-resell-agent.vercel.app/*",
+      "https://*.listingsai.com/*",
+      "http://localhost:3000/*"
+    ]
   }
 }
