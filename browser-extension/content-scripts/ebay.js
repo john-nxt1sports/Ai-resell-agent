@@ -1,9 +1,20 @@
 /**
  * AI Resell Agent - eBay Content Script
  * Handles login detection and automated listing creation on eBay
+ * Enhanced with 2026 Best Practices
+ *
+ * Features:
+ * - Anti-detection with human-like behavior
+ * - Retry logic with exponential backoff
+ * - CAPTCHA detection
+ * - Enhanced error handling
+ * - Image validation
+ *
+ * @version 3.0.0
+ * @updated 2026-01-29
  */
 
-console.log("[AI Resell Agent] eBay content script loaded");
+console.log("[AI Resell Agent] eBay content script v3.0 loaded");
 
 // Check if user is logged in
 function checkLoginStatus() {
@@ -54,7 +65,7 @@ function waitForElement(selector, timeout = 10000) {
   });
 }
 
-// Simulate human-like typing
+// Simulate human-like typing with variance (2026 enhancement)
 async function humanType(element, text) {
   element.focus();
   element.value = "";
@@ -62,15 +73,28 @@ async function humanType(element, text) {
   for (const char of text) {
     element.value += char;
     element.dispatchEvent(new Event("input", { bubbles: true }));
-    await sleep(50 + Math.random() * 50);
+    element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: char }));
+    element.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: char }));
+    
+    // Variable typing speed
+    let delay = 50 + Math.random() * 50;
+    // Occasional pause for "thinking"
+    if (Math.random() < 0.02) {
+      delay += Math.random() * 200;
+    }
+    await sleep(delay, false);
   }
 
   element.dispatchEvent(new Event("change", { bubbles: true }));
   element.dispatchEvent(new Event("blur", { bubbles: true }));
 }
 
-// Sleep helper
-function sleep(ms) {
+// Sleep helper with jitter (2026 anti-detection)
+function sleep(ms, addJitter = true) {
+  if (addJitter) {
+    const jitter = ms * 0.3 * (Math.random() - 0.5) * 2;
+    ms = Math.max(0, Math.round(ms + jitter));
+  }
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -81,34 +105,57 @@ async function humanClick(element) {
   element.click();
 }
 
-// Upload images from URLs
+// Upload images from URLs with validation (2026 enhancement)
 async function uploadImages(imageUrls) {
   try {
     const fileInput = await waitForElement(
       'input[type="file"][accept*="image"]',
     );
 
-    // Fetch images and create File objects
+    // Fetch images and create File objects with validation
     const files = await Promise.all(
       imageUrls.slice(0, 24).map(async (url, index) => {
         // eBay allows up to 24 images
-        const response = await fetch(url);
-        const blob = await response.blob();
-        return new File([blob], `image_${index}.jpg`, { type: "image/jpeg" });
+        try {
+          const response = await fetch(url);
+          if (!response.ok) return null;
+          
+          const blob = await response.blob();
+          
+          // Validate image type and size (2026)
+          if (!blob.type.startsWith("image/") || blob.size === 0) {
+            console.warn(`[AI Resell Agent] Invalid image at index ${index}`);
+            return null;
+          }
+          
+          return new File([blob], `image_${index}.jpg`, { type: "image/jpeg" });
+        } catch (error) {
+          console.warn(`[AI Resell Agent] Failed to fetch image ${index}:`, error);
+          return null;
+        }
       }),
     );
 
+    // Filter out failed downloads
+    const validFiles = files.filter(f => f !== null);
+    
+    if (validFiles.length === 0) {
+      console.error("[AI Resell Agent] No valid images to upload");
+      return false;
+    }
+
     // Create a DataTransfer to simulate file selection
     const dataTransfer = new DataTransfer();
-    files.forEach((file) => dataTransfer.items.add(file));
+    validFiles.forEach((file) => dataTransfer.items.add(file));
     fileInput.files = dataTransfer.files;
 
     // Trigger change event
     fileInput.dispatchEvent(new Event("change", { bubbles: true }));
 
     // Wait for upload to complete
-    await sleep(2000 * files.length);
+    await sleep(2000 * validFiles.length);
 
+    console.log(`[AI Resell Agent] Uploaded ${validFiles.length} images successfully`);
     return true;
   } catch (error) {
     console.error("[AI Resell Agent] Error uploading images:", error);

@@ -2,6 +2,14 @@
  * AI Resell Agent - Poshmark Content Script
  * TRUE AGENTIC Browser Automation (2026 Production Grade)
  *
+ * Enhanced with 2026 Best Practices:
+ * - Advanced anti-detection (variable timing, mouse simulation)
+ * - Circuit breaker and exponential backoff retry logic
+ * - CAPTCHA detection and handling
+ * - Structured logging with correlation IDs
+ * - Comprehensive error recovery mechanisms
+ * - Self-healing selector strategies
+ *
  * Architecture:
  * ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
  * │  DOM Analyzer   │────▶│  Browser Agent  │────▶│   AI (Gemini)   │
@@ -11,8 +19,9 @@
  *         │                                                │
  *         └──────────── Action Executor ◀──────────────────┘
  *
- * @version 2.0.0
+ * @version 3.0.0
  * @author AI Resell Agent Team
+ * @updated 2026-01-29
  */
 
 "use strict";

@@ -1,9 +1,18 @@
 /**
  * Browser Agent API - TRUE AGENTIC Automation
  * AI analyzes page context and returns specific actions to execute
+ * Enhanced with 2026 Best Practices
  *
- * @version 2.0.0
+ * Features:
+ * - Comprehensive error handling with structured responses
+ * - Correlation IDs for request tracking
+ * - Enhanced AI prompting for better action planning
+ * - Timeout handling and retry support
+ * - Security best practices
+ *
+ * @version 3.0.0
  * @author AI Resell Agent Team
+ * @updated 2026-01-29
  *
  * Architecture:
  * Content Script → PageContext → This API → AI Analysis → Action Array → Content Script
@@ -126,13 +135,14 @@ interface AgentResponse {
 // SYSTEM PROMPT
 // ============================================================================
 
-const SYSTEM_PROMPT = `You are an expert browser automation AI agent for e-commerce marketplaces. Your job is to analyze web page context and return specific actions to fill out listing forms.
+const SYSTEM_PROMPT = `You are an expert browser automation AI agent for e-commerce marketplaces (2026 Production Grade). Your job is to analyze web page context and return specific actions to fill out listing forms with zero-failure reliability.
 
 ## INPUT FORMAT
 You receive:
 1. Page context: All visible form elements with CSS selectors
 2. Listing data: Product info (title, description, price, brand, category, size, color)
 3. Previous actions: Actions already executed
+4. Marketplace: Target platform (poshmark, ebay, mercari)
 
 ## OUTPUT FORMAT
 Return a JSON array of actions. Each action object:
@@ -140,9 +150,11 @@ Return a JSON array of actions. Each action object:
 - selector: CSS selector to find element (optional for some actions)
 - value: Value to input or text to search for (for type/click text search)
 - description: Human-readable description
-- waitMs: Milliseconds to wait after action (optional)
+- waitMs: Milliseconds to wait after action (optional, for page settling)
 
-## POSHMARK FIELD MAPPING
+## MARKETPLACE-SPECIFIC FIELD MAPPING
+
+### POSHMARK
 - Title: input[placeholder*="selling"] or [data-vv-name="title"]
 - Description: textarea[placeholder*="Describe"] or [data-vv-name="description"]
 - Brand: input[placeholder="Brand"] or [data-vv-name="brand"]
@@ -152,39 +164,67 @@ Return a JSON array of actions. Each action object:
 - Color: Click color dropdown, select matching color(s)
 - Original Price: [data-vv-name="original_price"]
 
-## DROPDOWN HANDLING (CRITICAL)
-1. First action: Click dropdown trigger element
-2. Add waitMs: 500 for dropdown to open
-3. Second action: Click option using value field with text to match
+### EBAY
+- Title: input[name="title"] or input[data-testid="title-input"]
+- Description: textarea[name="description"] or #description
+- Price: input[name="price"] or input[data-testid="price-input"]
+- Condition: select[name="condition"] or [data-testid="condition-select"]
+- Category: Multi-step selection process
+- Shipping: Various shipping option selectors
+
+### MERCARI
+- Title: input[name="name"] or input[data-testid="title-input"]
+- Description: textarea[name="description"]
+- Brand: input[name="brand"]
+- Price: input[name="price"]
+- Condition: Dropdown with options: New, Like new, Good, Fair, Poor
+- Shipping: Auto-select first available option
+
+## DROPDOWN HANDLING (CRITICAL FOR SUCCESS)
+1. First action: Click dropdown trigger element with waitMs: 500
+2. Second action: Click option using value field with text to match and waitMs: 300
+3. Verify selection before proceeding
 
 Example:
 [
-  {"action":"click","selector":"[data-test='category-dropdown']","description":"Open category","waitMs":500},
-  {"action":"click","value":"Tops","description":"Select Tops","waitMs":300}
+  {"action":"click","selector":"[data-test='category-dropdown']","description":"Open category dropdown","waitMs":500},
+  {"action":"click","value":"Tops","description":"Select Tops category","waitMs":300}
 ]
 
-## MODAL HANDLING
-- If modal visible, handle it FIRST
-- Look for "Apply", "Done", "Save", "OK" buttons
-- Click the primary/submit button to close
+## MODAL & POPUP HANDLING
+- If modal visible, handle it FIRST before any other action
+- Look for "Apply", "Done", "Save", "OK", "Continue" buttons
+- Click the primary/submit button to close and waitMs: 800
 
-## REQUIRED FIELDS
-- If "Required" error shown, prioritize that field
-- Common required: Title, Description, Category, Size, Price
+## ERROR HANDLING & RECOVERY
+- If "Required" error shown, prioritize that field immediately
+- Common required fields: Title, Description, Category, Size, Price
+- If action fails repeatedly, try alternative selectors
+- Use scroll action to bring elements into view if needed
 
-## SUBMISSION
+## FORM SUBMISSION
 - Form complete → click button with data-et-name="next" or text "Next"
-- Final submit → button with text "List" or "List Item"
+- Final submit → button with text "List", "List Item", or "Publish"
+- Always wait 1000-2000ms after submission for processing
 
 ## SUCCESS DETECTION
-- URL contains "/listing/" without "create" → return {"action":"done","description":"Listing created"}
-- Page shows "Congratulations" or "Listed" → return {"action":"done","description":"Success"}
+- URL contains "/listing/" or "/item/" without "create" → return {"action":"done","description":"Listing created successfully"}
+- Page shows "Congratulations", "Listed", or "Success" → return {"action":"done","description":"Listing completed"}
+- Item number or listing ID visible → return {"action":"done","description":"Listing published"}
 
-## RULES
-1. Return ONLY valid JSON array - no markdown, no explanation
-2. Max 5 actions per response to allow page updates
-3. Use specific selectors - prefer data attributes over classes
-4. If stuck after multiple attempts, return error action
+## RELIABILITY RULES (2026 BEST PRACTICES)
+1. Return ONLY valid JSON array - no markdown, no explanation, no commentary
+2. Max 5 actions per response to allow page updates between iterations
+3. Use specific selectors - prefer data attributes > IDs > names > classes
+4. Always include appropriate waitMs for dynamic content
+5. If stuck after 3+ similar attempts, try alternative approach or scroll
+6. Handle edge cases: disabled buttons, loading states, validation errors
+7. Be defensive: verify elements exist before interacting
+
+## ANTI-DETECTION CONSIDERATIONS
+- Natural action progression (don't rush)
+- Appropriate wait times between actions
+- Realistic element interaction patterns
 
 Return ONLY the JSON array.`;
 
@@ -345,10 +385,11 @@ export async function OPTIONS(): Promise<NextResponse> {
 }
 
 /**
- * Main POST handler
+ * Main POST handler with enhanced error handling (2026)
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const startTime = Date.now();
+  let correlationId = "unknown";
 
   try {
     // Parse request body
@@ -361,8 +402,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       marketplace,
     } = body;
 
+    // Extract or generate correlation ID (2026 observability)
+    correlationId = (body as any).correlationId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     // Validate required fields
     if (!pageContext || !listingData || !marketplace) {
+      console.error(`[Browser Agent] ${correlationId} - Missing required fields`);
       return jsonResponse(
         {
           success: false,
@@ -382,6 +427,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       previousActions,
       marketplace,
     );
+
+    console.log(`[Browser Agent] ${correlationId} - Processing request for ${marketplace}`);
 
     // Call AI with reasoning enabled (Gemini 3 Pro)
     const aiResponse = await fetch(
@@ -410,9 +457,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (!aiResponse.ok) {
       const errorData = await aiResponse.json().catch(() => ({}));
-      throw new Error(
-        `AI API error: ${errorData.error?.message || aiResponse.statusText}`,
-      );
+      const errorMsg = `AI API error: ${errorData.error?.message || aiResponse.statusText}`;
+      console.error(`[Browser Agent] ${correlationId} - ${errorMsg}`);
+      throw new Error(errorMsg);
     }
 
     const aiResult = await aiResponse.json();
@@ -423,7 +470,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     try {
       actions = parseAIResponse(content);
     } catch (parseError) {
-      console.error("[Browser Agent] Failed to parse AI response:", content);
+      console.error(`[Browser Agent] ${correlationId} - Failed to parse AI response:`, content);
       actions = [
         {
           action: "error",
@@ -432,10 +479,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       ];
     }
 
-    // Limit actions per response
+    // Limit actions per response (2026 best practice)
     actions = actions.slice(0, 5);
 
     const processingTimeMs = Date.now() - startTime;
+    
+    console.log(`[Browser Agent] ${correlationId} - Success (${processingTimeMs}ms, ${actions.length} actions)`);
 
     return jsonResponse({
       success: true,
@@ -446,21 +495,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         marketplace,
         currentStep: currentStep || "fill_form",
         processingTimeMs,
+        correlationId,
       },
     });
   } catch (error) {
-    console.error("[Browser Agent] Error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`[Browser Agent] ${correlationId} - Error:`, error);
 
     return jsonResponse(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
         actions: [
           {
             action: "error",
             description: "API error occurred - will retry",
           },
         ],
+        debug: {
+          correlationId,
+          processingTimeMs: Date.now() - startTime,
+        } as any,
       },
       500,
     );
