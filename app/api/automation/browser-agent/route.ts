@@ -116,6 +116,7 @@ interface AgentRequest {
   currentStep: string;
   previousActions?: BrowserAction[];
   marketplace: string;
+  correlationId?: string; // 2026 addition
 }
 
 interface AgentResponse {
@@ -128,6 +129,7 @@ interface AgentResponse {
     marketplace: string;
     currentStep: string;
     processingTimeMs: number;
+    correlationId?: string; // 2026 addition
   };
 }
 
