@@ -27,7 +27,9 @@
 ## 📱 The Three Screens Grandma Needs
 
 ### Screen 1: HOME (The Dashboard)
-### Screen 2: ADD ITEM (The Camera)  
+
+### Screen 2: ADD ITEM (The Camera)
+
 ### Screen 3: MONEY (The Results)
 
 That's it. Three screens. Everything else is hidden complexity.
@@ -82,13 +84,13 @@ That's it. Three screens. Everything else is hidden complexity.
 
 ### Design Rules for Home:
 
-| Element | Why |
-|---------|-----|
-| **Big money number** | Dopamine! Shows value immediately |
-| **Emoji indicators** | Faster to understand than text |
-| **One giant button** | Can't miss the main action |
-| **Simple activity feed** | Stories, not data tables |
-| **No jargon** | "SOLD" not "Transaction completed" |
+| Element                  | Why                                |
+| ------------------------ | ---------------------------------- |
+| **Big money number**     | Dopamine! Shows value immediately  |
+| **Emoji indicators**     | Faster to understand than text     |
+| **One giant button**     | Can't miss the main action         |
+| **Simple activity feed** | Stories, not data tables           |
+| **No jargon**            | "SOLD" not "Transaction completed" |
 
 ---
 
@@ -404,21 +406,22 @@ That's it. Three screens. Everything else is hidden complexity.
 
 ### The AI Should Handle Without Asking:
 
-| Situation | What AI Does | User Sees |
-|-----------|-------------|-----------|
-| Item sells on Poshmark | Removes from eBay, Mercari | "Removed from other stores ✓" |
-| Listing 30+ days old | Suggests price drop | Notification with [Yes/No] |
-| Someone sends offer | Shows simple accept/decline | Big buttons, no math needed |
-| Photo is dark | Auto-brightens | Just sees good photo |
-| Brand tag visible | Reads brand, category, material | Auto-filled fields |
-| Similar items data | Sets competitive price | "Recommended: $45" |
-| Best platform for item | Prioritizes that store | "Listed on Poshmark first (best for shoes)" |
+| Situation              | What AI Does                    | User Sees                                   |
+| ---------------------- | ------------------------------- | ------------------------------------------- |
+| Item sells on Poshmark | Removes from eBay, Mercari      | "Removed from other stores ✓"               |
+| Listing 30+ days old   | Suggests price drop             | Notification with [Yes/No]                  |
+| Someone sends offer    | Shows simple accept/decline     | Big buttons, no math needed                 |
+| Photo is dark          | Auto-brightens                  | Just sees good photo                        |
+| Brand tag visible      | Reads brand, category, material | Auto-filled fields                          |
+| Similar items data     | Sets competitive price          | "Recommended: $45"                          |
+| Best platform for item | Prioritizes that store          | "Listed on Poshmark first (best for shoes)" |
 
 ---
 
 ## 🚫 WHAT TO HIDE FROM GRANDMA
 
 ### Never Show:
+
 - ❌ API calls, webhooks, technical logs
 - ❌ Multiple category dropdowns
 - ❌ Complex size/color matrices
@@ -427,6 +430,7 @@ That's it. Three screens. Everything else is hidden complexity.
 - ❌ "Syncing...", "Retrying...", "Error 429"
 
 ### Instead Show:
+
 - ✅ "Working on it..." with friendly animation
 - ✅ Simple success/fail states
 - ✅ One-tap retry: "Something went wrong. [Try Again]"
@@ -460,6 +464,7 @@ That's it. Three screens. Everything else is hidden complexity.
 ```
 
 ### Touch Targets:
+
 - Minimum 48x48px for all buttons
 - Primary actions: 60px+ height
 - Plenty of padding between elements
@@ -470,6 +475,7 @@ That's it. Three screens. Everything else is hidden complexity.
 ## 🎨 VISUAL LANGUAGE
 
 ### Colors:
+
 ```
 Primary Action:     #10B981 (Friendly green - "Go!")
 Money/Success:      #10B981 (Same green - money association)
@@ -480,6 +486,7 @@ Text:               #1F2937 (Dark gray - readable)
 ```
 
 ### Typography:
+
 ```
 Headlines:    Bold, 24-32px, friendly sans-serif
 Body:         Regular, 16-18px, highly readable
@@ -488,6 +495,7 @@ Buttons:      Medium, 16px, ALL CAPS for actions
 ```
 
 ### Iconography:
+
 - Use emojis liberally - universally understood
 - Supplement with simple line icons
 - Every icon should have a text label
@@ -498,13 +506,13 @@ Buttons:      Medium, 16px, ALL CAPS for actions
 
 ### How to Know UI is Working:
 
-| Metric | Target | How to Measure |
-|--------|--------|----------------|
-| Time to first listing | < 3 minutes | From signup to live listing |
-| Taps to list item | < 5 taps | Count user interactions |
-| Support tickets | < 2% of users | People who get confused |
-| Daily active users | > 40% | People who return daily |
-| Listing completion rate | > 90% | Started vs. completed listings |
+| Metric                  | Target        | How to Measure                 |
+| ----------------------- | ------------- | ------------------------------ |
+| Time to first listing   | < 3 minutes   | From signup to live listing    |
+| Taps to list item       | < 5 taps      | Count user interactions        |
+| Support tickets         | < 2% of users | People who get confused        |
+| Daily active users      | > 40%         | People who return daily        |
+| Listing completion rate | > 90%         | Started vs. completed listings |
 
 ---
 
@@ -710,6 +718,7 @@ Buttons:      Medium, 16px, ALL CAPS for actions
 ## 🔄 AUTO-SHARE (Poshmark Feature)
 
 ### Why This Matters
+
 Poshmark's algorithm rewards sharing. Top sellers share 3-5x daily. That's tedious!
 
 ### The Setup (One Toggle)
@@ -781,6 +790,7 @@ Poshmark's algorithm rewards sharing. Top sellers share 3-5x daily. That's tedio
 ## 💸 AUTO-OFFERS (Send Offers to Likers)
 
 ### The Golden Feature
+
 When someone "likes" your item on Poshmark, they're interested! Send them a deal automatically.
 
 ### Setup Screen
@@ -859,6 +869,7 @@ When someone "likes" your item on Poshmark, they're interested! Send them a deal
 ## 🎯 AUTO-RELIST (Refresh Stale Listings)
 
 ### Why It Matters
+
 Old listings get buried. Relisting = fresh listing = top of search.
 
 ```
@@ -1163,36 +1174,42 @@ Old listings get buried. Relisting = fresh listing = top of search.
 ## 🏗️ IMPLEMENTATION PRIORITY
 
 ### Phase 1: MVP (Must Have)
+
 1. ✅ Photo capture → AI listing generation
 2. ✅ One-tap posting to multiple platforms
 3. ✅ Sale notifications
 4. ✅ Basic earnings dashboard
 
 ### Phase 2: Autopilot Core (THE DIFFERENTIATOR) 🔥
+
 1. 🔲 **Auto-Share (Poshmark)** - Share closet 2-5x daily
 2. 🔲 **Auto-Offers to Likers** - Send offers when someone likes
 3. 🔲 **Auto-Price Drop** - Smart price reduction over time
 4. 🔲 **Auto-Delist** - Remove from other stores when sold
 
 ### Phase 3: Autopilot Advanced (Full Automation)
+
 1. 🔲 **Auto-Counter Offers** - Counter lowballs automatically
 2. 🔲 **Auto-Relist** - Refresh stale listings
 3. 🔲 **Auto-Party Join** - Join Poshmark parties automatically
 4. 🔲 **Auto-Accept** - Accept offers above threshold (opt-in)
 
 ### Phase 4: Intelligence (Competitive Advantage)
+
 1. 🔲 AI pricing recommendations
 2. 🔲 Best platform suggestions
 3. 🔲 Photo enhancement
 4. 🔲 Optimal posting times
 
 ### Phase 5: Session & Infrastructure
+
 1. 🔲 Session persistence (no re-login)
 2. 🔲 Bulk queue processing (50+ items overnight)
 3. 🔲 Background job scheduling
 4. 🔲 Cross-platform inventory sync
 
 ### Phase 6: Delight (Retention)
+
 1. 🔲 Gamification (streaks, badges)
 2. 🔲 Community features
 3. 🔲 Annual recap ("You earned $15k this year!")
@@ -1203,6 +1220,7 @@ Old listings get buried. Relisting = fresh listing = top of search.
 ## 📝 COPY GUIDELINES
 
 ### Do Say:
+
 - "You made $X!" (not "Revenue: $X")
 - "Listed on 4 stores" (not "Cross-posted to 4 marketplaces")
 - "Working on it..." (not "Processing request...")
@@ -1210,6 +1228,7 @@ Old listings get buried. Relisting = fresh listing = top of search.
 - "Try again" (not "Retry failed operation")
 
 ### Don't Say:
+
 - Any technical jargon
 - API, sync, webhook, OAuth
 - "Please wait" (show progress instead)
@@ -1230,6 +1249,7 @@ If no → Simplify more
 ## 📋 COMPONENT CHECKLIST
 
 ### Home Screen Components:
+
 - [ ] EarningsCard - Big money display
 - [ ] QuickStats - Sold/Listed/Views
 - [ ] AddItemButton - Giant CTA
@@ -1237,6 +1257,7 @@ If no → Simplify more
 - [ ] BottomNav - 4 icons max
 
 ### Add Item Flow:
+
 - [ ] CameraCapture - Full screen camera
 - [ ] PhotoThumbnails - Scrollable row
 - [ ] ProcessingScreen - Animated progress
@@ -1244,11 +1265,13 @@ If no → Simplify more
 - [ ] PostingProgress - Multi-store status
 
 ### Money Screen:
+
 - [ ] PeriodSelector - Week/Month/All
 - [ ] EarningsChart - Simple bar chart
 - [ ] SalesList - Recent sales with photos
 
 ### Autopilot Components:
+
 - [ ] AutopilotDashboard - Weekly activity summary
 - [ ] AutoShareSettings - Toggle + frequency
 - [ ] AutoOfferSettings - Discount + shipping options
@@ -1259,6 +1282,7 @@ If no → Simplify more
 - [ ] PartyJoinSettings - Auto-party toggle
 
 ### Shared Components:
+
 - [ ] LoadingSpinner - Friendly animation
 - [ ] SuccessState - Celebration animation
 - [ ] ErrorState - Friendly retry
@@ -1269,28 +1293,29 @@ If no → Simplify more
 
 ## 🆚 COMPETITIVE FEATURE MATRIX
 
-| Feature | Vendoo | Crosslist | List Perfectly | **YOUR APP** |
-|---------|--------|-----------|----------------|--------------|
-| Cross-list to multiple stores | ✅ | ✅ | ✅ | ✅ |
-| Auto-fill forms | Partial | Partial | Partial | **FULL** |
-| Auto-handle dropdowns/modals | ❌ | ❌ | ❌ | **✅** |
-| **Auto-Share (Poshmark)** | ❌ | ❌ | ❌ | **✅** |
-| **Auto-Offers to Likers** | ❌ | ❌ | ❌ | **✅** |
-| **Auto-Price Drop** | ❌ | ❌ | ❌ | **✅** |
-| **Auto-Counter Offers** | ❌ | ❌ | ❌ | **✅** |
-| **Auto-Relist Stale Items** | ❌ | ❌ | ❌ | **✅** |
-| **Auto-Join Posh Parties** | ❌ | ❌ | ❌ | **✅** |
-| Auto-delist when sold | ✅ | ✅ | ✅ | ✅ |
-| AI Pricing Suggestions | ❌ | ❌ | ❌ | **✅** |
-| True hands-off automation | ❌ | ❌ | ❌ | **✅** |
+| Feature                       | Vendoo  | Crosslist | List Perfectly | **YOUR APP** |
+| ----------------------------- | ------- | --------- | -------------- | ------------ |
+| Cross-list to multiple stores | ✅      | ✅        | ✅             | ✅           |
+| Auto-fill forms               | Partial | Partial   | Partial        | **FULL**     |
+| Auto-handle dropdowns/modals  | ❌      | ❌        | ❌             | **✅**       |
+| **Auto-Share (Poshmark)**     | ❌      | ❌        | ❌             | **✅**       |
+| **Auto-Offers to Likers**     | ❌      | ❌        | ❌             | **✅**       |
+| **Auto-Price Drop**           | ❌      | ❌        | ❌             | **✅**       |
+| **Auto-Counter Offers**       | ❌      | ❌        | ❌             | **✅**       |
+| **Auto-Relist Stale Items**   | ❌      | ❌        | ❌             | **✅**       |
+| **Auto-Join Posh Parties**    | ❌      | ❌        | ❌             | **✅**       |
+| Auto-delist when sold         | ✅      | ✅        | ✅             | ✅           |
+| AI Pricing Suggestions        | ❌      | ❌        | ❌             | **✅**       |
+| True hands-off automation     | ❌      | ❌        | ❌             | **✅**       |
 
 ### Your Killer Differentiators:
+
 1. **🔄 Auto-Share** - Competitors don't touch this, but it's HUGE for Poshmark sellers
-2. **💸 Auto-Offers** - Convert likers to buyers automatically  
+2. **💸 Auto-Offers** - Convert likers to buyers automatically
 3. **📉 Auto-Price Drop** - Stale inventory moves itself
 4. **🔁 Auto-Counter** - Never leave money on the table
 5. **🎉 Auto-Party** - Join Poshmark parties automatically
 
 ---
 
-*Remember: Every feature you add is a potential confusion point. When in doubt, leave it out.*
+_Remember: Every feature you add is a potential confusion point. When in doubt, leave it out._
