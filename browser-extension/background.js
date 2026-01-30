@@ -3,9 +3,14 @@
  * Handles communication between the web app and content scripts
  */
 
-// Configuration - Load from environment or use defaults
+// Configuration - Production URLs
 const CONFIG = {
-  APP_URL: typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+  APP_URLS: [
+    "https://ai-resell-agent.vercel.app",
+    "https://listingsai.com",
+    "https://www.listingsai.com",
+    "http://localhost:3000",
+  ],
   MARKETPLACES: {
     poshmark: {
       baseUrl: "https://poshmark.com",
@@ -397,16 +402,18 @@ async function handleListingFailed(marketplace, listingData, error) {
 // Notify the web app of events
 async function notifyWebApp(eventType, data) {
   try {
-    // Find tab with our web app
-    const tabs = await chrome.tabs.query({ url: `${CONFIG.APP_URL}/*` });
+    // Find tabs with our web app (check all possible URLs)
+    for (const appUrl of CONFIG.APP_URLS) {
+      const tabs = await chrome.tabs.query({ url: `${appUrl}/*` });
 
-    for (const tab of tabs) {
-      chrome.tabs
-        .sendMessage(tab.id, {
-          type: eventType,
-          data,
-        })
-        .catch(() => {});
+      for (const tab of tabs) {
+        chrome.tabs
+          .sendMessage(tab.id, {
+            type: eventType,
+            data,
+          })
+          .catch(() => {});
+      }
     }
   } catch (error) {
     console.error("[AI Resell Agent] Error notifying web app:", error);

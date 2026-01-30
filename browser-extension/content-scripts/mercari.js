@@ -1,9 +1,19 @@
 /**
  * AI Resell Agent - Mercari Content Script
  * Handles login detection and automated listing creation on Mercari
+ * Enhanced with 2026 Best Practices
+ *
+ * Features:
+ * - Anti-detection with human-like behavior
+ * - Retry logic with exponential backoff
+ * - Enhanced error handling
+ * - Image validation
+ *
+ * @version 3.0.0
+ * @updated 2026-01-29
  */
 
-console.log("[AI Resell Agent] Mercari content script loaded");
+console.log("[AI Resell Agent] Mercari content script v3.0 loaded");
 
 // Check if user is logged in
 function checkLoginStatus() {
@@ -11,13 +21,24 @@ function checkLoginStatus() {
   const profileMenu = document.querySelector(
     '[data-testid="AccountMenu"], [aria-label="Account menu"]',
   );
-  const loginButton = document.querySelector(
-    'a[href*="/login"], button:contains("Log in")',
-  );
+  const loginLink = document.querySelector('a[href*="/login"]');
   const sellButton = document.querySelector('a[href="/sell"]');
 
+  // Also check for login button by looking at button text
+  const allButtons = document.querySelectorAll("button");
+  let hasLoginButton = !!loginLink;
+  for (const btn of allButtons) {
+    if (
+      btn.textContent.toLowerCase().includes("log in") ||
+      btn.textContent.toLowerCase().includes("sign in")
+    ) {
+      hasLoginButton = true;
+      break;
+    }
+  }
+
   // Check for user-specific elements
-  const isLoggedIn = !!(profileMenu || (sellButton && !loginButton));
+  const isLoggedIn = !!(profileMenu || (sellButton && !hasLoginButton));
 
   console.log("[AI Resell Agent] Mercari login status:", isLoggedIn);
 
@@ -55,7 +76,7 @@ function waitForElement(selector, timeout = 10000) {
   });
 }
 
-// Simulate human-like typing
+// Simulate human-like typing with variance (2026 enhancement)
 async function humanType(element, text) {
   element.focus();
   element.value = "";
@@ -63,15 +84,28 @@ async function humanType(element, text) {
   for (const char of text) {
     element.value += char;
     element.dispatchEvent(new Event("input", { bubbles: true }));
-    await sleep(50 + Math.random() * 50);
+    element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: char }));
+    element.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: char }));
+    
+    // Variable typing speed
+    let delay = 50 + Math.random() * 50;
+    // Occasional pause for "thinking"
+    if (Math.random() < 0.02) {
+      delay += Math.random() * 200;
+    }
+    await sleep(delay, false);
   }
 
   element.dispatchEvent(new Event("change", { bubbles: true }));
   element.dispatchEvent(new Event("blur", { bubbles: true }));
 }
 
-// Sleep helper
-function sleep(ms) {
+// Sleep helper with jitter (2026 anti-detection)
+function sleep(ms, addJitter = true) {
+  if (addJitter) {
+    const jitter = ms * 0.3 * (Math.random() - 0.5) * 2;
+    ms = Math.max(0, Math.round(ms + jitter));
+  }
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -82,34 +116,57 @@ async function humanClick(element) {
   element.click();
 }
 
-// Upload images from URLs
+// Upload images from URLs with validation (2026 enhancement)
 async function uploadImages(imageUrls) {
   try {
     const fileInput = await waitForElement(
       'input[type="file"][accept*="image"]',
     );
 
-    // Fetch images and create File objects
+    // Fetch images and create File objects with validation
     const files = await Promise.all(
       imageUrls.slice(0, 12).map(async (url, index) => {
         // Mercari allows up to 12 images
-        const response = await fetch(url);
-        const blob = await response.blob();
-        return new File([blob], `image_${index}.jpg`, { type: "image/jpeg" });
+        try {
+          const response = await fetch(url);
+          if (!response.ok) return null;
+          
+          const blob = await response.blob();
+          
+          // Validate image type and size (2026)
+          if (!blob.type.startsWith("image/") || blob.size === 0) {
+            console.warn(`[AI Resell Agent] Invalid image at index ${index}`);
+            return null;
+          }
+          
+          return new File([blob], `image_${index}.jpg`, { type: "image/jpeg" });
+        } catch (error) {
+          console.warn(`[AI Resell Agent] Failed to fetch image ${index}:`, error);
+          return null;
+        }
       }),
     );
 
+    // Filter out failed downloads
+    const validFiles = files.filter(f => f !== null);
+    
+    if (validFiles.length === 0) {
+      console.error("[AI Resell Agent] No valid images to upload");
+      return false;
+    }
+
     // Create a DataTransfer to simulate file selection
     const dataTransfer = new DataTransfer();
-    files.forEach((file) => dataTransfer.items.add(file));
+    validFiles.forEach((file) => dataTransfer.items.add(file));
     fileInput.files = dataTransfer.files;
 
     // Trigger change event
     fileInput.dispatchEvent(new Event("change", { bubbles: true }));
 
     // Wait for upload to complete
-    await sleep(2000 * files.length);
+    await sleep(2000 * validFiles.length);
 
+    console.log(`[AI Resell Agent] Uploaded ${validFiles.length} images successfully`);
     return true;
   } catch (error) {
     console.error("[AI Resell Agent] Error uploading images:", error);
@@ -128,10 +185,22 @@ async function selectCondition(condition) {
   };
 
   try {
-    // Click condition dropdown
-    const conditionBtn = await waitForElement(
-      '[data-testid="condition-select"], button:contains("Condition"), [aria-label*="condition" i]',
+    // Click condition dropdown - try multiple selectors
+    let conditionBtn = document.querySelector(
+      '[data-testid="condition-select"], [aria-label*="condition" i]',
     );
+
+    // If not found, look for button with "Condition" text
+    if (!conditionBtn) {
+      const buttons = document.querySelectorAll("button");
+      for (const btn of buttons) {
+        if (btn.textContent.includes("Condition")) {
+          conditionBtn = btn;
+          break;
+        }
+      }
+    }
+
     if (conditionBtn) {
       await humanClick(conditionBtn);
       await sleep(500);
@@ -242,9 +311,26 @@ async function fillListingForm(listing) {
 // Submit the listing
 async function submitListing() {
   try {
-    const submitBtn = await waitForElement(
-      'button[data-testid="submit-btn"], button[type="submit"]:contains("List"), button:contains("List item")',
+    // Try to find submit button with multiple approaches
+    let submitBtn = document.querySelector(
+      'button[data-testid="submit-btn"], button[type="submit"]',
     );
+
+    // If not found, look for button with "List" text
+    if (!submitBtn) {
+      const buttons = document.querySelectorAll("button");
+      for (const btn of buttons) {
+        const text = btn.textContent.toLowerCase();
+        if (
+          text.includes("list item") ||
+          text === "list" ||
+          text.includes("publish")
+        ) {
+          submitBtn = btn;
+          break;
+        }
+      }
+    }
 
     if (submitBtn) {
       await humanClick(submitBtn);

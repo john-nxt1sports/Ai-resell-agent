@@ -351,6 +351,33 @@ function parseListingResponse(content: string): GeneratedListing {
 /**
  * Parse image analysis response
  */
+/**
+ * Normalize condition to match database constraint
+ * DB expects: 'new', 'like_new', 'good', 'fair', 'poor'
+ */
+function normalizeCondition(condition: string | undefined): string {
+  if (!condition) return "good";
+
+  const normalized = condition.toLowerCase().trim();
+
+  // Map variations to valid values
+  const conditionMap: Record<string, string> = {
+    new: "new",
+    "brand new": "new",
+    "like new": "like_new",
+    like_new: "like_new",
+    likenew: "like_new",
+    excellent: "like_new",
+    good: "good",
+    "very good": "good",
+    fair: "fair",
+    poor: "poor",
+    used: "good",
+  };
+
+  return conditionMap[normalized] || "good";
+}
+
 function parseImageAnalysisResponse(content: string): ImageAnalysisResult {
   try {
     const jsonStr = extractJSON(content);
@@ -361,7 +388,7 @@ function parseImageAnalysisResponse(content: string): ImageAnalysisResult {
         description: "Unable to analyze image",
         detectedItems: [],
         suggestedCategory: "Other",
-        suggestedCondition: "Good",
+        suggestedCondition: "good",
         suggestedBrand: undefined,
         colors: [],
         keywords: [],
@@ -375,7 +402,7 @@ function parseImageAnalysisResponse(content: string): ImageAnalysisResult {
         ? parsed.detectedItems
         : [],
       suggestedCategory: parsed.suggestedCategory || "Other",
-      suggestedCondition: parsed.suggestedCondition || "Good",
+      suggestedCondition: normalizeCondition(parsed.suggestedCondition),
       suggestedBrand: parsed.suggestedBrand,
       colors: Array.isArray(parsed.colors) ? parsed.colors : [],
       keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
@@ -388,7 +415,7 @@ function parseImageAnalysisResponse(content: string): ImageAnalysisResult {
       description: "Unable to analyze image",
       detectedItems: [],
       suggestedCategory: "Other",
-      suggestedCondition: "Good",
+      suggestedCondition: "good",
       suggestedBrand: undefined,
       colors: [],
       keywords: [],
