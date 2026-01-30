@@ -1,7 +1,11 @@
 /**
- * AI Resell Agent - Chrome Extension Background Service Worker
+ * AI Resell Agent - Chrome Extension Background Service Worker (2026 Best Practices)
  * Handles communication between the web app and content scripts
+ * Includes session capture and cloud browser sync
  */
+
+// Import session capture module
+importScripts("session-capture.js");
 
 // Configuration - Production URLs
 const CONFIG = {
@@ -37,6 +41,7 @@ const CONFIG = {
 let pendingJobs = [];
 let connectedMarketplaces = {};
 let extensionId = null;
+let sessionRefreshIntervals = {}; // Store active refresh intervals
 
 // Initialize extension
 chrome.runtime.onInstalled.addListener(() => {
@@ -143,6 +148,42 @@ async function handleMessage(message, sender, sendResponse) {
       case "UPDATE_LOGIN_STATUS":
         await updateLoginStatus(message.marketplace, message.isLoggedIn);
         sendResponse({ success: true });
+        break;
+
+      case "CAPTURE_SESSION":
+        // Capture and sync session data for marketplace
+        const sessionResult = await captureAndSyncSession(
+          message.marketplace,
+          message.apiUrl,
+          message.authToken
+        );
+        sendResponse(sessionResult);
+        break;
+
+      case "START_SESSION_AUTO_SYNC":
+        // Start automatic session sync for marketplace
+        const autoSyncResult = await startAutoSessionSync(
+          message.marketplace,
+          message.apiUrl,
+          message.authToken,
+          message.intervalMinutes
+        );
+        sendResponse(autoSyncResult);
+        break;
+
+      case "STOP_SESSION_AUTO_SYNC":
+        // Stop automatic session sync
+        stopAutoSessionSync(message.marketplace);
+        sendResponse({ success: true });
+        break;
+
+      case "CAPTURE_ALL_SESSIONS":
+        // Capture sessions for all marketplaces
+        const allSessionsResult = await captureAllSessions(
+          message.apiUrl,
+          message.authToken
+        );
+        sendResponse(allSessionsResult);
         break;
 
       default:
@@ -418,6 +459,165 @@ async function notifyWebApp(eventType, data) {
   } catch (error) {
     console.error("[AI Resell Agent] Error notifying web app:", error);
   }
+}
+
+// ============================================================================
+// SESSION CAPTURE & SYNC (2026 Best Practices - Vendoo-style hybrid architecture)
+// ============================================================================
+
+/**
+ * Capture and sync session data for a marketplace
+ */
+async function captureAndSyncSession(marketplace, apiUrl, authToken) {
+  try {
+    console.log(`[Session Sync] Capturing session for ${marketplace}`);
+    
+    // Use SessionCapture module
+    const sessionData = await SessionCapture.captureSessionData(marketplace);
+    
+    if (!sessionData.isLoggedIn) {
+      return {
+        success: false,
+        error: "Not logged in to marketplace",
+        marketplace,
+      };
+    }
+
+    // Sync to backend
+    const syncResult = await SessionCapture.syncToBackend(
+      sessionData,
+      apiUrl,
+      authToken
+    );
+
+    console.log(`[Session Sync] ✅ Session synced for ${marketplace}`);
+    
+    // Update local storage
+    await updateLoginStatus(marketplace, true);
+
+    return {
+      success: true,
+      marketplace,
+      syncedAt: sessionData.timestamp,
+      browserProfileId: syncResult.browserProfileId,
+    };
+  } catch (error) {
+    console.error(`[Session Sync] Error syncing ${marketplace}:`, error);
+    return {
+      success: false,
+      error: error.message,
+      marketplace,
+    };
+  }
+}
+
+/**
+ * Start automatic session sync for a marketplace
+ */
+async function startAutoSessionSync(
+  marketplace,
+  apiUrl,
+  authToken,
+  intervalMinutes = 30
+) {
+  try {
+    // Stop existing interval if any
+    stopAutoSessionSync(marketplace);
+
+    // Initial sync
+    await captureAndSyncSession(marketplace, apiUrl, authToken);
+
+    // Start periodic sync
+    const intervalId = SessionCapture.startAutoRefresh(
+      marketplace,
+      apiUrl,
+      authToken,
+      intervalMinutes
+    );
+
+    sessionRefreshIntervals[marketplace] = intervalId;
+
+    console.log(
+      `[Session Sync] Auto-sync started for ${marketplace} (every ${intervalMinutes} min)`
+    );
+
+    return {
+      success: true,
+      marketplace,
+      intervalMinutes,
+    };
+  } catch (error) {
+    console.error(`[Session Sync] Error starting auto-sync:`, error);
+    return {
+      success: false,
+      error: error.message,
+      marketplace,
+    };
+  }
+}
+
+/**
+ * Stop automatic session sync for a marketplace
+ */
+function stopAutoSessionSync(marketplace) {
+  if (sessionRefreshIntervals[marketplace]) {
+    clearInterval(sessionRefreshIntervals[marketplace]);
+    delete sessionRefreshIntervals[marketplace];
+    console.log(`[Session Sync] Auto-sync stopped for ${marketplace}`);
+  }
+}
+
+/**
+ * Capture and sync sessions for all connected marketplaces
+ */
+async function captureAllSessions(apiUrl, authToken) {
+  const results = {};
+  const marketplaces = Object.keys(CONFIG.MARKETPLACES);
+
+  for (const marketplace of marketplaces) {
+    results[marketplace] = await captureAndSyncSession(
+      marketplace,
+      apiUrl,
+      authToken
+    );
+  }
+
+  return {
+    success: true,
+    results,
+    syncedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Monitor login state changes and auto-sync
+ */
+async function initializeSessionMonitoring(apiUrl, authToken) {
+  const marketplaces = Object.keys(CONFIG.MARKETPLACES);
+
+  for (const marketplace of marketplaces) {
+    SessionCapture.monitorLoginStateChanges(
+      marketplace,
+      async (mp, isLoggedIn, sessionData) => {
+        console.log(
+          `[Session Monitor] ${mp} login state changed: ${isLoggedIn}`
+        );
+
+        if (isLoggedIn) {
+          // User just logged in - capture and sync session
+          await captureAndSyncSession(mp, apiUrl, authToken);
+        }
+
+        // Notify web app
+        notifyWebApp("MARKETPLACE_LOGIN_CHANGED", {
+          marketplace: mp,
+          isLoggedIn,
+        });
+      }
+    );
+  }
+
+  console.log("[Session Monitor] Monitoring initialized for all marketplaces");
 }
 
 console.log("[AI Resell Agent] Background service worker started");
