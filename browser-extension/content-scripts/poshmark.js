@@ -264,6 +264,63 @@ const DOMInspector = {
 
     const normalizedText = Utils.normalizeText(text);
 
+    // Priority 0: Search in visible MODAL dropdowns first (highest priority)
+    const modalDropdownSelectors = [
+      '.modal:not([style*="display: none"]) .dropdown__menu .dropdown__link',
+      '[role="dialog"] .dropdown__menu .dropdown__link',
+      '[aria-modal="true"] .dropdown__menu .dropdown__link',
+      '.modal .dropdown__menu:not([style*="display: none"]) .dropdown__link',
+      ".modal .dropdown--open .dropdown__link",
+      '.modal [role="listbox"] [role="option"]',
+      '[role="dialog"] [role="option"]',
+    ];
+
+    for (const selector of modalDropdownSelectors) {
+      const elements = document.querySelectorAll(selector);
+      for (const el of elements) {
+        if (this.isVisible(el)) {
+          const elText = Utils.normalizeText(el.textContent);
+          if (
+            elText === normalizedText ||
+            elText.includes(normalizedText) ||
+            normalizedText.includes(elText)
+          ) {
+            Logger.debug(
+              `Found element in modal dropdown: "${el.textContent?.trim()}"`,
+            );
+            return el;
+          }
+        }
+      }
+    }
+
+    // Priority 1: Search in visible dropdown menus (non-modal)
+    const dropdownMenuSelectors = [
+      '.dropdown__menu:not([style*="display: none"]) .dropdown__link',
+      '.dropdown__menu:not([style*="display: none"]) .dropdown__menu__item',
+      ".dropdown--open .dropdown__link",
+      ".dropdown.active .dropdown__link",
+      '[role="listbox"] [role="option"]',
+      ".dropdown-menu.show li",
+    ];
+
+    for (const selector of dropdownMenuSelectors) {
+      const elements = document.querySelectorAll(selector);
+      for (const el of elements) {
+        if (this.isVisible(el)) {
+          const elText = Utils.normalizeText(el.textContent);
+          if (
+            elText === normalizedText ||
+            elText.includes(normalizedText) ||
+            normalizedText.includes(elText)
+          ) {
+            return el;
+          }
+        }
+      }
+    }
+
+    // Priority 2: General interactive elements
     const searchSelectors = [
       "button",
       '[role="button"]',
@@ -402,8 +459,27 @@ const PageContextExtractor = {
   _extractDropdowns() {
     const dropdowns = [];
 
+    // Extended selectors for Poshmark's custom dropdowns
+    const dropdownSelectors = [
+      "select",
+      ".dropdown",
+      '[data-test*="dropdown"]',
+      ".listing-editor__section--category .dropdown",
+      ".listing-editor__section--size .dropdown",
+      ".listing-editor__section--color .dropdown",
+      '[class*="category"] .dropdown',
+      '[class*="size"] .dropdown',
+      '[data-vv-name="category"]',
+      '[data-vv-name="size"]',
+      ".form__select",
+      ".dropdown__selector",
+      ".dropdown__toggle",
+      '[role="listbox"]',
+      '[role="combobox"]',
+    ];
+
     document
-      .querySelectorAll('select, .dropdown, [data-test*="dropdown"]')
+      .querySelectorAll(dropdownSelectors.join(", "))
       .forEach((el, idx) => {
         if (!DOMInspector.isVisible(el)) return;
 
@@ -412,6 +488,33 @@ const PageContextExtractor = {
           el.querySelectorAll("option").forEach((opt) => {
             options.push(opt.textContent?.trim());
           });
+        }
+
+        // Check for expanded dropdown menu options
+        const menuEl =
+          el.querySelector(".dropdown__menu") ||
+          el.closest(".dropdown")?.querySelector(".dropdown__menu");
+        if (menuEl && DOMInspector.isVisible(menuEl)) {
+          menuEl
+            .querySelectorAll(
+              '.dropdown__link, .dropdown__menu__item, li, [role="option"]',
+            )
+            .forEach((opt) => {
+              const text = opt.textContent?.trim();
+              if (text && text.length < 100) options.push(text);
+            });
+        }
+
+        // Get context from parent section label
+        let sectionLabel = null;
+        const section = el.closest(
+          ".listing-editor__section, .listing-editor__subsection, section",
+        );
+        if (section) {
+          const labelEl = section.querySelector(
+            ".listing-editor__section__title, label, h4, h3",
+          );
+          sectionLabel = labelEl?.textContent?.trim();
         }
 
         dropdowns.push({
@@ -424,6 +527,8 @@ const PageContextExtractor = {
           classes: el.className || null,
           dataAttributes: DOMInspector.extractDataAttributes(el),
           options: options.slice(0, 20),
+          sectionLabel: sectionLabel,
+          isExpanded: menuEl && DOMInspector.isVisible(menuEl),
           selector: DOMInspector.generateSelector(el, idx, "dropdown"),
         });
       });
@@ -464,28 +569,165 @@ const PageContextExtractor = {
   _extractModals() {
     const modals = [];
 
-    document
-      .querySelectorAll('.modal, [data-test*="modal"], [role="dialog"]')
-      .forEach((el, idx) => {
-        if (!DOMInspector.isVisible(el)) return;
+    // Extended modal selectors including Poshmark's price suggestion modal
+    const modalSelectors = [
+      '.modal:not([style*="display: none"])',
+      '[data-test*="modal"]',
+      '[role="dialog"]',
+      ".price-suggestion-modal",
+      ".posh-suggest-modal",
+      ".modal--visible",
+      '[class*="modal"][class*="open"]',
+      '[class*="modal"][class*="active"]',
+      ".overlay-modal",
+      '[aria-modal="true"]',
+      ".ReactModal__Content",
+      ".modal-content",
+      '[class*="Dialog"]',
+    ];
 
-        const modalButtons = [];
-        el.querySelectorAll("button").forEach((btn, btnIdx) => {
+    document.querySelectorAll(modalSelectors.join(", ")).forEach((el, idx) => {
+      if (!DOMInspector.isVisible(el)) return;
+
+      // Extract buttons inside modal
+      const modalButtons = [];
+      el.querySelectorAll('button, .btn, [role="button"]').forEach(
+        (btn, btnIdx) => {
           if (DOMInspector.isVisible(btn)) {
-            modalButtons.push({
-              text: btn.textContent?.trim(),
-              selector: DOMInspector.generateSelector(btn, btnIdx, "modal-btn"),
+            const btnText = btn.textContent?.trim();
+            if (btnText && btnText.length > 0 && btnText.length < 50) {
+              modalButtons.push({
+                text: btnText,
+                selector: DOMInspector.generateSelector(
+                  btn,
+                  btnIdx,
+                  "modal-btn",
+                ),
+                isPrimary:
+                  btn.classList.contains("btn--primary") ||
+                  btn.classList.contains("primary"),
+              });
+            }
+          }
+        },
+      );
+
+      // Extract dropdowns inside modal (CRITICAL for multi-dropdown modals)
+      const modalDropdowns = [];
+      el.querySelectorAll(
+        '.dropdown, select, [role="listbox"], [role="combobox"], .dropdown__selector, [data-test*="dropdown"]',
+      ).forEach((dd, ddIdx) => {
+        if (DOMInspector.isVisible(dd)) {
+          // Get dropdown label from nearby elements
+          let dropdownLabel = null;
+          const labelEl = dd
+            .closest(
+              ".form-group, .field, section, .listing-editor__subsection",
+            )
+            ?.querySelector('label, h4, h3, .title, [class*="label"]');
+          if (labelEl) dropdownLabel = labelEl.textContent?.trim();
+
+          // Check if dropdown is open/expanded
+          const menuEl =
+            dd.querySelector(".dropdown__menu") ||
+            dd.closest(".dropdown")?.querySelector(".dropdown__menu");
+          const isExpanded = menuEl && DOMInspector.isVisible(menuEl);
+
+          // Get available options if expanded
+          const options = [];
+          if (isExpanded && menuEl) {
+            menuEl
+              .querySelectorAll(
+                '.dropdown__link, .dropdown__menu__item, li, [role="option"]',
+              )
+              .forEach((opt) => {
+                const text = opt.textContent?.trim();
+                if (text && text.length < 100) options.push(text);
+              });
+          }
+
+          // Get current selected value
+          let currentValue =
+            dd.querySelector(".dropdown__selector")?.textContent?.trim() ||
+            dd.value ||
+            dd.querySelector('[class*="selected"]')?.textContent?.trim() ||
+            null;
+
+          modalDropdowns.push({
+            label: dropdownLabel,
+            selector: DOMInspector.generateSelector(
+              dd,
+              ddIdx,
+              "modal-dropdown",
+            ),
+            isExpanded: isExpanded,
+            options: options.slice(0, 15),
+            currentValue: currentValue,
+            text: dd.textContent?.trim().substring(0, 100),
+          });
+        }
+      });
+
+      // Extract inputs inside modal
+      const modalInputs = [];
+      el.querySelectorAll('input:not([type="hidden"]), textarea').forEach(
+        (inp, inpIdx) => {
+          if (DOMInspector.isVisible(inp)) {
+            let inputLabel = null;
+            const labelEl =
+              inp.closest(".form-group, .field")?.querySelector("label") ||
+              document.querySelector(`label[for="${inp.id}"]`);
+            if (labelEl) inputLabel = labelEl.textContent?.trim();
+
+            modalInputs.push({
+              type: inp.type || "textarea",
+              label: inputLabel,
+              placeholder: inp.placeholder || null,
+              value: inp.value || null,
+              selector: DOMInspector.generateSelector(
+                inp,
+                inpIdx,
+                "modal-input",
+              ),
             });
           }
-        });
+        },
+      );
 
-        modals.push({
-          tag: "modal",
-          text: el.textContent?.trim().substring(0, 300),
-          buttons: modalButtons,
-          selector: DOMInspector.generateSelector(el, idx, "modal"),
-        });
+      // Detect modal type by content
+      const modalText = el.textContent?.toLowerCase() || "";
+      let modalType = "unknown";
+      if (modalText.includes("price") || modalText.includes("suggest"))
+        modalType = "price-suggestion";
+      else if (modalText.includes("crop") || modalText.includes("photo"))
+        modalType = "image-crop";
+      else if (modalText.includes("category")) modalType = "category";
+      else if (modalText.includes("size")) modalType = "size";
+      else if (modalText.includes("color")) modalType = "color";
+      else if (modalText.includes("brand")) modalType = "brand";
+      else if (modalText.includes("condition")) modalType = "condition";
+      else if (modalDropdowns.length > 0) modalType = "form-with-dropdowns";
+
+      // Determine if modal requires interaction or can be auto-dismissed
+      const hasRequiredFields =
+        modalDropdowns.some((dd) => !dd.currentValue) ||
+        modalInputs.some((inp) => !inp.value && inp.type !== "hidden");
+      const canAutoDismiss =
+        !hasRequiredFields && modalButtons.some((b) => b.isPrimary);
+
+      modals.push({
+        tag: "modal",
+        type: modalType,
+        text: el.textContent?.trim().substring(0, 300),
+        buttons: modalButtons,
+        dropdowns: modalDropdowns,
+        inputs: modalInputs,
+        hasRequiredFields: hasRequiredFields,
+        canAutoDismiss: canAutoDismiss,
+        dropdownCount: modalDropdowns.length,
+        selector: DOMInspector.generateSelector(el, idx, "modal"),
       });
+    });
 
     return modals;
   },
@@ -578,6 +820,12 @@ const ActionExecutor = {
       return false;
     }
 
+    // Detect if this is a price field (triggers modal on Poshmark)
+    const isPriceField =
+      action.selector?.includes("price") ||
+      el.getAttribute("data-vv-name") === "price" ||
+      el.placeholder?.toLowerCase().includes("price");
+
     // Focus and clear
     el.focus();
     el.value = "";
@@ -598,17 +846,59 @@ const ActionExecutor = {
     }
 
     el.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // For price field, immediately handle the price suggestion modal that appears
+    if (isPriceField) {
+      await Utils.sleep(500); // Wait for modal to appear
+      await this._handlePriceSuggestionModal();
+    }
     el.dispatchEvent(new Event("blur", { bubbles: true }));
 
     return true;
   },
 
+  /**
+   * Handle Poshmark's price suggestion modal that appears after entering price
+   * @returns {Promise<boolean>}
+   */
+  async _handlePriceSuggestionModal() {
+    const modalSelectors = [
+      ".price-suggestion-modal button.btn--primary",
+      '.modal button[data-et-name="done"]',
+      '.modal button[data-et-name="apply"]',
+      '.modal:not([style*="display: none"]) button.btn--primary',
+      '[role="dialog"] button.btn--primary',
+      ".modal button:not(.btn--tertiary)",
+    ];
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      for (const selector of modalSelectors) {
+        const btn = document.querySelector(selector);
+        if (btn && DOMInspector.isVisible(btn)) {
+          Logger.info(
+            `Dismissing price suggestion modal: "${btn.textContent?.trim()}"`,
+          );
+          await this._performClick(btn);
+          await Utils.sleep(500);
+          return true;
+        }
+      }
+      await Utils.sleep(300);
+    }
+    return false;
+  },
+
   async _executeClick(action) {
     let el = DOMInspector.findElement(action.selector);
 
-    // Fallback to text search
+    // Fallback to text search with enhanced dropdown support
     if (!el && action.value) {
       el = DOMInspector.findElementByText(action.value);
+
+      // If still not found, search specifically in open dropdown menus
+      if (!el) {
+        el = this._findDropdownOption(action.value);
+      }
     }
 
     if (!el) {
@@ -619,6 +909,51 @@ const ActionExecutor = {
     }
 
     return await this._performClick(el);
+  },
+
+  /**
+   * Find option in an open dropdown menu
+   * @param {string} text - Text to search for
+   * @returns {Element|null}
+   */
+  _findDropdownOption(text) {
+    if (!text) return null;
+    const normalizedText = Utils.normalizeText(text);
+
+    // Search in visible dropdown menus
+    const menuSelectors = [
+      '.dropdown__menu:not([style*="display: none"])',
+      ".dropdown-menu.show",
+      '[role="listbox"]',
+      ".dropdown--open .dropdown__menu",
+      ".dropdown.active .dropdown__menu",
+    ];
+
+    for (const menuSelector of menuSelectors) {
+      const menus = document.querySelectorAll(menuSelector);
+      for (const menu of menus) {
+        if (!DOMInspector.isVisible(menu)) continue;
+
+        const options = menu.querySelectorAll(
+          '.dropdown__link, .dropdown__menu__item, li, [role="option"], a, button',
+        );
+
+        for (const opt of options) {
+          if (!DOMInspector.isVisible(opt)) continue;
+          const optText = Utils.normalizeText(opt.textContent);
+          // Check exact match or contains
+          if (
+            optText === normalizedText ||
+            optText.includes(normalizedText) ||
+            normalizedText.includes(optText)
+          ) {
+            return opt;
+          }
+        }
+      }
+    }
+
+    return null;
   },
 
   async _performClick(el) {
@@ -725,12 +1060,24 @@ const ActionExecutor = {
 
 const ModalHandler = {
   MODAL_BUTTON_SELECTORS: Object.freeze([
+    // Primary action buttons
     '.modal:not([style*="display: none"]) button.btn--primary',
     ".modal .btn--primary",
     '[role="dialog"] button.btn--primary',
     '[data-test*="modal"] button[type="submit"]',
     '.modal button[data-et-name="apply"]',
     '.modal button[data-et-name="done"]',
+    // Price suggestion modal specific
+    ".price-suggestion-modal button.btn--primary",
+    ".posh-suggest-modal button.btn--primary",
+    // Generic modal confirmations
+    '[aria-modal="true"] button.btn--primary',
+    ".modal--visible button.btn--primary",
+    // Fallback: any primary button in visible modal
+    ".modal:not(.hidden) .btn--primary",
+    // "Done" or "Apply" text buttons
+    '.modal button:contains("Done")',
+    '.modal button:contains("Apply")',
   ]),
 
   /**
@@ -738,16 +1085,60 @@ const ModalHandler = {
    * @returns {Promise<boolean>}
    */
   async handleAny() {
+    // First try standard selectors
     for (const selector of this.MODAL_BUTTON_SELECTORS) {
-      const btn = document.querySelector(selector);
-
-      if (btn && DOMInspector.isVisible(btn)) {
-        Logger.info(`Auto-handling modal: "${btn.textContent?.trim()}"`);
-        await ActionExecutor._performClick(btn);
-        await Utils.sleep(800);
-        return true;
+      try {
+        const btn = document.querySelector(selector);
+        if (btn && DOMInspector.isVisible(btn)) {
+          Logger.info(`Auto-handling modal: "${btn.textContent?.trim()}"`);
+          await ActionExecutor._performClick(btn);
+          await Utils.sleep(800);
+          return true;
+        }
+      } catch (e) {
+        // Some selectors like :contains() may not be supported
       }
     }
+
+    // Fallback: Find any visible modal and click its primary/submit button
+    const modals = document.querySelectorAll(
+      '.modal, [role="dialog"], [aria-modal="true"]',
+    );
+    for (const modal of modals) {
+      if (!DOMInspector.isVisible(modal)) continue;
+
+      // Look for buttons with common confirmation text
+      const confirmTexts = [
+        "done",
+        "apply",
+        "ok",
+        "save",
+        "continue",
+        "yes",
+        "confirm",
+      ];
+      const buttons = modal.querySelectorAll('button, .btn, [role="button"]');
+
+      for (const btn of buttons) {
+        if (!DOMInspector.isVisible(btn)) continue;
+        const btnText = Utils.normalizeText(btn.textContent);
+
+        // Check if button text matches common confirmations
+        if (
+          confirmTexts.some((t) => btnText.includes(t)) ||
+          btn.classList.contains("btn--primary") ||
+          btn.classList.contains("primary")
+        ) {
+          Logger.info(
+            `Auto-handling modal (fallback): "${btn.textContent?.trim()}"`,
+          );
+          await ActionExecutor._performClick(btn);
+          await Utils.sleep(800);
+          return true;
+        }
+      }
+    }
+
     return false;
   },
 
@@ -779,17 +1170,35 @@ const ModalHandler = {
 
 const DirectFill = {
   FIELD_SELECTORS: Object.freeze({
-    title: ['input[placeholder*="selling"]', 'input[data-vv-name="title"]'],
+    title: ['input[data-vv-name="title"]', 'input[placeholder*="selling"]'],
     description: [
-      'textarea[placeholder*="Describe"]',
       'textarea[data-vv-name="description"]',
+      'textarea[placeholder*="Describe"]',
     ],
-    brand: ['input[placeholder="Brand"]', 'input[data-vv-name="brand"]'],
+    brand: ['input[data-vv-name="brand"]', 'input[placeholder="Brand"]'],
     price: [
       'input[data-vv-name="price"]',
       'input[placeholder*="Listing Price"]',
     ],
     originalPrice: ['input[data-vv-name="original_price"]'],
+  }),
+
+  DROPDOWN_SELECTORS: Object.freeze({
+    category: [
+      ".listing-editor__section--category .dropdown__selector",
+      ".listing-editor__section--category .dropdown",
+      '[data-test*="category"] .dropdown',
+    ],
+    size: [
+      ".listing-editor__section--size .dropdown__selector",
+      ".listing-editor__section--size .dropdown",
+      '[data-test*="size"] .dropdown',
+    ],
+    color: [
+      ".listing-editor__section--color .dropdown__selector",
+      ".listing-editor__section--color .dropdown",
+      '[data-test*="color"] .dropdown',
+    ],
   }),
 
   /**
@@ -818,12 +1227,81 @@ const DirectFill = {
         const el = document.querySelector(selector);
         if (el && DOMInspector.isVisible(el)) {
           await ActionExecutor._executeType({ selector, value });
+
+          // Handle price modal if this was a price field
+          if (key === "price") {
+            await Utils.sleep(500);
+            await ActionExecutor._handlePriceSuggestionModal();
+          }
           break;
         }
       }
     }
 
+    // Also try to fill dropdowns
+    await this._fillDropdowns(listingData);
+
     return true;
+  },
+
+  /**
+   * Attempt to fill dropdown fields
+   * @param {Object} listingData
+   */
+  async _fillDropdowns(listingData) {
+    // Size dropdown
+    if (listingData.size) {
+      await this._selectFromDropdown("size", listingData.size);
+    }
+
+    // Category dropdown
+    if (listingData.category) {
+      await this._selectFromDropdown("category", listingData.category);
+    }
+
+    // Color dropdown
+    if (listingData.color) {
+      const colors = Array.isArray(listingData.color)
+        ? listingData.color
+        : [listingData.color];
+      for (const color of colors) {
+        await this._selectFromDropdown("color", color);
+      }
+    }
+  },
+
+  /**
+   * Select an option from a Poshmark dropdown
+   * @param {string} dropdownType - 'category', 'size', or 'color'
+   * @param {string} value - Value to select
+   */
+  async _selectFromDropdown(dropdownType, value) {
+    const selectors = this.DROPDOWN_SELECTORS[dropdownType];
+    if (!selectors) return;
+
+    for (const selector of selectors) {
+      try {
+        const dropdown = document.querySelector(selector);
+        if (dropdown && DOMInspector.isVisible(dropdown)) {
+          // Open dropdown
+          await ActionExecutor._performClick(dropdown);
+          await Utils.sleep(600);
+
+          // Find and click option
+          const option = ActionExecutor._findDropdownOption(value);
+          if (option) {
+            await ActionExecutor._performClick(option);
+            await Utils.sleep(400);
+            Logger.info(
+              `DirectFill: Selected "${value}" from ${dropdownType} dropdown`,
+            );
+            return;
+          }
+        }
+      } catch (e) {
+        Logger.debug(`DirectFill dropdown error: ${e.message}`);
+      }
+    }
   },
 };
 
@@ -966,14 +1444,21 @@ const AgentOrchestrator = {
   },
 
   async _runMainLoop(listingData, state) {
+    let lastPageState = "";
+    let stuckCount = 0;
+    const MAX_STUCK_COUNT = 3;
+
     while (state.iteration < AgentConfig.TIMING.MAX_ITERATIONS) {
       state.iteration++;
       Logger.info(`--- Iteration ${state.iteration} ---`);
 
-      // Handle any visible modals first
-      if (await ModalHandler.handleAny()) {
+      // Handle any visible modals first (including price suggestion modals)
+      let modalHandled = await ModalHandler.handleAny();
+      if (modalHandled) {
         Logger.debug("Modal handled, re-analyzing page");
         await Utils.sleep(500);
+        // Try handling additional modals that may appear
+        await ModalHandler.handleAny();
         continue;
       }
 
@@ -981,6 +1466,28 @@ const AgentOrchestrator = {
 
       // Extract page state
       const pageContext = PageContextExtractor.extract();
+
+      // Detect if we're stuck (same page state as before)
+      const currentPageState = JSON.stringify({
+        errors: pageContext.errors,
+        url: pageContext.url,
+        modals: pageContext.modals.length,
+      });
+
+      if (currentPageState === lastPageState) {
+        stuckCount++;
+        Logger.info(`Potentially stuck (${stuckCount}/${MAX_STUCK_COUNT})`);
+
+        if (stuckCount >= MAX_STUCK_COUNT) {
+          Logger.info("Stuck detected - attempting recovery actions");
+          await this._attemptRecovery(listingData, pageContext, state);
+          stuckCount = 0;
+          continue;
+        }
+      } else {
+        stuckCount = 0;
+        lastPageState = currentPageState;
+      }
 
       // Check for success
       if (this._checkSuccess(pageContext)) {
@@ -999,12 +1506,18 @@ const AgentOrchestrator = {
 
         if (!result.success || !result.actions?.length) {
           state.failedIterations++;
+          Logger.info(
+            `No actions received (${state.failedIterations}/${AgentConfig.LIMITS.MAX_FAILED_ITERATIONS})`,
+          );
 
           if (
             state.failedIterations >= AgentConfig.LIMITS.MAX_FAILED_ITERATIONS
           ) {
+            Logger.info("Max failed iterations - using direct fill fallback");
             await DirectFill.fill(listingData);
             state.failedIterations = 0;
+            // Try clicking Next after direct fill
+            await this._clickNextButton();
           }
 
           await Utils.sleep(2000);
@@ -1026,6 +1539,8 @@ const AgentOrchestrator = {
           await Utils.sleep(
             action.waitMs || AgentConfig.TIMING.ACTION_DELAY_MS,
           );
+
+          // Check for and handle modals after each action
           await ModalHandler.handleAny();
         }
 
@@ -1043,6 +1558,156 @@ const AgentOrchestrator = {
     await this._attemptFinalSubmit();
 
     return { success: false, error: "Max iterations reached" };
+  },
+
+  /**
+   * Attempt recovery when stuck
+   */
+  async _attemptRecovery(listingData, pageContext, state) {
+    // Check for error messages and try to fix them
+    if (pageContext.errors.length > 0) {
+      Logger.info("Errors detected:", pageContext.errors);
+
+      for (const error of pageContext.errors) {
+        const errorLower = error.toLowerCase();
+
+        // Size error recovery
+        if (errorLower.includes("size")) {
+          Logger.info("Attempting to fix size error");
+          await this._attemptSizeSelection(listingData.size);
+          return;
+        }
+
+        // Category error recovery
+        if (errorLower.includes("category")) {
+          Logger.info("Attempting to fix category error");
+          await this._attemptCategorySelection(listingData.category);
+          return;
+        }
+
+        // Price error recovery
+        if (errorLower.includes("price")) {
+          Logger.info("Attempting to fix price error");
+          await DirectFill.fill({ price: listingData.price });
+          await ModalHandler.handleAny();
+          return;
+        }
+      }
+    }
+
+    // No specific error - try clicking Next to see what's missing
+    const clicked = await this._clickNextButton();
+    if (!clicked) {
+      // Try scrolling to reveal more content
+      window.scrollBy({ top: 300, behavior: "smooth" });
+      await Utils.sleep(1000);
+    }
+  },
+
+  /**
+   * Attempt to select size from dropdown
+   */
+  async _attemptSizeSelection(size) {
+    // Find and click size dropdown
+    const sizeDropdownSelectors = [
+      ".listing-editor__section--size .dropdown",
+      '[data-test*="size"] .dropdown',
+      '.dropdown:has(.listing-editor__section__title:contains("Size"))',
+      'button[data-et-name="size"]',
+      ".size-dropdown",
+    ];
+
+    for (const selector of sizeDropdownSelectors) {
+      try {
+        const dropdown = document.querySelector(selector);
+        if (dropdown && DOMInspector.isVisible(dropdown)) {
+          await ActionExecutor._performClick(dropdown);
+          await Utils.sleep(500);
+
+          // Find and click size option
+          const sizeToSelect = size || "7"; // Default size
+          const option =
+            ActionExecutor._findDropdownOption(sizeToSelect) ||
+            ActionExecutor._findDropdownOption("M") ||
+            ActionExecutor._findDropdownOption("Medium");
+          if (option) {
+            await ActionExecutor._performClick(option);
+            await Utils.sleep(300);
+            return true;
+          }
+        }
+      } catch (e) {
+        // Continue to next selector
+      }
+    }
+    return false;
+  },
+
+  /**
+   * Attempt to select category from dropdown
+   */
+  async _attemptCategorySelection(category) {
+    const categoryDropdownSelectors = [
+      ".listing-editor__section--category .dropdown",
+      '[data-test*="category"] .dropdown',
+      'button[data-et-name="category"]',
+    ];
+
+    for (const selector of categoryDropdownSelectors) {
+      try {
+        const dropdown = document.querySelector(selector);
+        if (dropdown && DOMInspector.isVisible(dropdown)) {
+          await ActionExecutor._performClick(dropdown);
+          await Utils.sleep(500);
+
+          const categoryToSelect = category || "Tops";
+          const option = ActionExecutor._findDropdownOption(categoryToSelect);
+          if (option) {
+            await ActionExecutor._performClick(option);
+            await Utils.sleep(300);
+            return true;
+          }
+        }
+      } catch (e) {
+        // Continue to next selector
+      }
+    }
+    return false;
+  },
+
+  /**
+   * Click the Next button
+   */
+  async _clickNextButton() {
+    const nextSelectors = [
+      'button[data-et-name="next"]',
+      'button:contains("Next")',
+      '.btn--primary:contains("Next")',
+      '[data-test="next-btn"]',
+    ];
+
+    for (const selector of nextSelectors) {
+      try {
+        const btn = document.querySelector(selector);
+        if (btn && DOMInspector.isVisible(btn) && !btn.disabled) {
+          await ActionExecutor._performClick(btn);
+          await Utils.sleep(1000);
+          return true;
+        }
+      } catch (e) {
+        // Try next selector
+      }
+    }
+
+    // Fallback: find by text
+    const nextBtn = DOMInspector.findElementByText("next");
+    if (nextBtn && !nextBtn.disabled) {
+      await ActionExecutor._performClick(nextBtn);
+      await Utils.sleep(1000);
+      return true;
+    }
+
+    return false;
   },
 
   _checkSuccess(pageContext) {

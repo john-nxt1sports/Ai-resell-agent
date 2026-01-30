@@ -149,84 +149,139 @@ You receive:
 ## OUTPUT FORMAT
 Return a JSON array of actions. Each action object:
 - action: "type" | "click" | "select" | "scroll" | "wait" | "done" | "error"
-- selector: CSS selector to find element (optional for some actions)
-- value: Value to input or text to search for (for type/click text search)
+- selector: CSS selector to find element (required for type/select, optional for click if using value)
+- value: For "type": text to input. For "click": text to match in dropdown options
 - description: Human-readable description
-- waitMs: Milliseconds to wait after action (optional, for page settling)
+- waitMs: Milliseconds to wait after action (use 500-800 for dropdowns)
 
-## MARKETPLACE-SPECIFIC FIELD MAPPING
+## POSHMARK SPECIFIC INSTRUCTIONS (CRITICAL - FOLLOW EXACTLY)
 
-### POSHMARK
-- Title: input[placeholder*="selling"] or [data-vv-name="title"]
-- Description: textarea[placeholder*="Describe"] or [data-vv-name="description"]
-- Brand: input[placeholder="Brand"] or [data-vv-name="brand"]
-- Price: [data-vv-name="price"] or input[placeholder*="Listing Price"]
-- Category: Click category dropdown, then select from menu
-- Size: Click size dropdown, select matching size
-- Color: Click color dropdown, select matching color(s)
-- Original Price: [data-vv-name="original_price"]
+### Field Selectors
+- Title: input[data-vv-name="title"] or input[placeholder*="selling"]
+- Description: textarea[data-vv-name="description"]
+- Brand: input[data-vv-name="brand"] or input[placeholder="Brand"]
+- Price: input[data-vv-name="price"]
+  NOTE: Price field triggers a modal - it's auto-dismissed, continue normally
+- Original Price: input[data-vv-name="original_price"]
 
-### EBAY
-- Title: input[name="title"] or input[data-testid="title-input"]
-- Description: textarea[name="description"] or #description
-- Price: input[name="price"] or input[data-testid="price-input"]
-- Condition: select[name="condition"] or [data-testid="condition-select"]
-- Category: Multi-step selection process
-- Shipping: Various shipping option selectors
+### DROPDOWN HANDLING (THIS IS WHERE MOST FAILURES OCCUR)
+Poshmark uses CUSTOM dropdowns, not native <select> elements.
 
-### MERCARI
-- Title: input[name="name"] or input[data-testid="title-input"]
+**Pattern for ALL dropdowns:**
+1. CLICK the dropdown trigger to OPEN it (waitMs: 600)
+2. CLICK the option by TEXT MATCHING using "value" field (waitMs: 400)
+
+**Category Selection (multi-level):**
+\`\`\`json
+[
+  {"action":"click","selector":".listing-editor__section--category .dropdown__selector","description":"Open category dropdown","waitMs":600},
+  {"action":"click","value":"Men","description":"Select Men department","waitMs":500},
+  {"action":"click","value":"Shoes","description":"Select Shoes category","waitMs":500},
+  {"action":"click","value":"Sandals","description":"Select subcategory","waitMs":400}
+]
+\`\`\`
+
+**Size Selection:**
+\`\`\`json
+[
+  {"action":"click","selector":".listing-editor__section--size .dropdown__selector","description":"Open size dropdown","waitMs":600},
+  {"action":"click","value":"7","description":"Select size 7","waitMs":400}
+]
+\`\`\`
+
+**Color Selection:**
+\`\`\`json
+[
+  {"action":"click","selector":".listing-editor__section--color .dropdown__selector","description":"Open color dropdown","waitMs":600},
+  {"action":"click","value":"Black","description":"Select black color","waitMs":400}
+]
+\`\`\`
+
+### IMPORTANT: When clicking dropdown OPTIONS:
+- Use "value" field with the EXACT text you want to match
+- Do NOT use selector for options - the executor will find by text
+- Wait 600ms after opening dropdown before selecting
+
+## EBAY SPECIFIC
+- Title: input[name="title"]
+- Description: textarea[name="description"]
+- Price: input[name="price"]
+- Category: Multi-step process, follow prompts
+
+## MERCARI SPECIFIC
+- Title: input[name="name"]
 - Description: textarea[name="description"]
 - Brand: input[name="brand"]
 - Price: input[name="price"]
-- Condition: Dropdown with options: New, Like new, Good, Fair, Poor
-- Shipping: Auto-select first available option
 
-## DROPDOWN HANDLING (CRITICAL FOR SUCCESS)
-1. First action: Click dropdown trigger element with waitMs: 500
-2. Second action: Click option using value field with text to match and waitMs: 300
-3. Verify selection before proceeding
+## MODAL HANDLING (CRITICAL - READ CAREFULLY)
+Modals are now reported with full details including:
+- buttons: Available buttons in the modal
+- dropdowns: Dropdowns inside the modal with their selectors, labels, and current values
+- inputs: Input fields inside the modal
+- hasRequiredFields: Whether the modal needs interaction before dismissing
+- canAutoDismiss: Whether modal can be safely dismissed with primary button
 
-Example:
-[
-  {"action":"click","selector":"[data-test='category-dropdown']","description":"Open category dropdown","waitMs":500},
-  {"action":"click","value":"Tops","description":"Select Tops category","waitMs":300}
-]
+**MODAL WITH MULTIPLE DROPDOWNS (COMMON ON POSHMARK):**
+When you see a modal with dropdowns array, you MUST fill them IN ORDER:
 
-## MODAL & POPUP HANDLING
-- If modal visible, handle it FIRST before any other action
-- Look for "Apply", "Done", "Save", "OK", "Continue" buttons
-- Click the primary/submit button to close and waitMs: 800
+1. First, check if a dropdown inside the modal is already expanded (isExpanded: true)
+2. If expanded, select the option using: {"action":"click","value":"Option Text","description":"Select option","waitMs":500}
+3. If not expanded, open the dropdown first using its selector from the modal.dropdowns array
+4. After selecting, the next dropdown may auto-expand - check for isExpanded in next context
+5. Only click the primary/submit button AFTER all dropdowns have values (hasRequiredFields: false)
 
-## ERROR HANDLING & RECOVERY
-- If "Required" error shown, prioritize that field immediately
-- Common required fields: Title, Description, Category, Size, Price
-- If action fails repeatedly, try alternative selectors
-- Use scroll action to bring elements into view if needed
+**Example - Modal with 3 dropdowns (Category → Department → Subcategory):**
+\`\`\`json
+[{"action":"click","selector":"[modal-dropdown selector from context]","description":"Open first dropdown in modal","waitMs":600}]
+\`\`\`
+Then in next iteration when expanded:
+\`\`\`json
+[{"action":"click","value":"Men","description":"Select category option","waitMs":500}]
+\`\`\`
 
-## FORM SUBMISSION
-- Form complete → click button with data-et-name="next" or text "Next"
-- Final submit → button with text "List", "List Item", or "Publish"
-- Always wait 1000-2000ms after submission for processing
+**IMPORTANT:** Do NOT try to dismiss modals with hasRequiredFields: true - fill the fields first!
+Simple modals (canAutoDismiss: true) ARE auto-dismissed. Complex modals require your interaction.
+
+## ERROR RECOVERY
+When you see ERRORS in the page context:
+1. Address the error IMMEDIATELY
+2. Size required → open size dropdown, select a size
+3. Category required → open category dropdown, make selection
+4. Price required → type in price field
+
+## WHEN TO RETURN ACTIONS
+- If fields need filling → return type actions
+- If dropdowns need selection → return click sequence (open then select)
+- If errors shown → address the error
+- If all fields filled → click "Next" button
+- If on final page → click "List" or "Publish"
+
+## WHEN TO RETURN EMPTY OR SCROLL
+If you're stuck and don't know what to do:
+\`\`\`json
+[{"action":"scroll","description":"Scroll to reveal more content","waitMs":500}]
+\`\`\`
+
+Or try clicking Next:
+\`\`\`json
+[{"action":"click","selector":"button[data-et-name=\\"next\\"]","description":"Click Next to proceed","waitMs":800}]
+\`\`\`
 
 ## SUCCESS DETECTION
-- URL contains "/listing/" or "/item/" without "create" → return {"action":"done","description":"Listing created successfully"}
-- Page shows "Congratulations", "Listed", or "Success" → return {"action":"done","description":"Listing completed"}
-- Item number or listing ID visible → return {"action":"done","description":"Listing published"}
+Return done when:
+- URL contains "/listing/" without "create"
+- Page shows "Congratulations" or "successfully listed"
+\`\`\`json
+[{"action":"done","description":"Listing created successfully"}]
+\`\`\`
 
-## RELIABILITY RULES (2026 BEST PRACTICES)
-1. Return ONLY valid JSON array - no markdown, no explanation, no commentary
-2. Max 5 actions per response to allow page updates between iterations
-3. Use specific selectors - prefer data attributes > IDs > names > classes
-4. Always include appropriate waitMs for dynamic content
-5. If stuck after 3+ similar attempts, try alternative approach or scroll
-6. Handle edge cases: disabled buttons, loading states, validation errors
-7. Be defensive: verify elements exist before interacting
-
-## ANTI-DETECTION CONSIDERATIONS
-- Natural action progression (don't rush)
-- Appropriate wait times between actions
-- Realistic element interaction patterns
+## CRITICAL RULES
+1. Return ONLY valid JSON array - no markdown, no text outside JSON
+2. Max 5 actions per response
+3. Use appropriate waitMs (500-800ms for dropdown interactions)
+4. For dropdown options, use VALUE field with text, not selector
+5. Address errors before proceeding to Next
 
 Return ONLY the JSON array.`;
 
@@ -301,11 +356,48 @@ function buildUserPrompt(
     "=== MODALS ===",
     pageContext.modals.length > 0
       ? pageContext.modals
-          .map(
-            (m) =>
-              `Modal: ${m.text?.substring(0, 100)} | Buttons: ${m.buttons?.map((b) => b.text).join(", ")}`,
-          )
-          .join("\n")
+          .map((m) => {
+            const lines = [
+              `Modal Type: ${(m as any).type || "unknown"}`,
+              `  Text: ${m.text?.substring(0, 100) || "N/A"}`,
+              `  Buttons: ${m.buttons?.map((b) => `${b.text}${(b as any).isPrimary ? " (PRIMARY)" : ""}`).join(", ") || "None"}`,
+              `  hasRequiredFields: ${(m as any).hasRequiredFields ?? "unknown"}`,
+              `  canAutoDismiss: ${(m as any).canAutoDismiss ?? "unknown"}`,
+            ];
+
+            // Include dropdown details if present
+            const dropdowns = (m as any).dropdowns;
+            if (dropdowns && dropdowns.length > 0) {
+              lines.push(`  Dropdowns (${dropdowns.length}):`);
+              dropdowns.forEach((dd: any, idx: number) => {
+                lines.push(
+                  `    [${idx + 1}] Label: "${dd.label || "N/A"}" | Selector: "${dd.selector}"`,
+                );
+                lines.push(
+                  `        isExpanded: ${dd.isExpanded} | currentValue: "${dd.currentValue || "empty"}"`,
+                );
+                if (dd.isExpanded && dd.options?.length > 0) {
+                  lines.push(
+                    `        OPTIONS: [${dd.options.slice(0, 10).join(", ")}]`,
+                  );
+                }
+              });
+            }
+
+            // Include input details if present
+            const inputs = (m as any).inputs;
+            if (inputs && inputs.length > 0) {
+              lines.push(`  Inputs (${inputs.length}):`);
+              inputs.forEach((inp: any, idx: number) => {
+                lines.push(
+                  `    [${idx + 1}] ${inp.type} | Label: "${inp.label || inp.placeholder || "N/A"}" | Value: "${inp.value || "empty"}" | Selector: "${inp.selector}"`,
+                );
+              });
+            }
+
+            return lines.join("\n");
+          })
+          .join("\n\n")
       : "None",
     "",
     "=== ERRORS ===",
@@ -405,11 +497,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     } = body;
 
     // Extract or generate correlation ID (2026 observability)
-    correlationId = (body as any).correlationId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    correlationId =
+      (body as any).correlationId ||
+      `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Validate required fields
     if (!pageContext || !listingData || !marketplace) {
-      console.error(`[Browser Agent] ${correlationId} - Missing required fields`);
+      console.error(
+        `[Browser Agent] ${correlationId} - Missing required fields`,
+      );
       return jsonResponse(
         {
           success: false,
@@ -430,7 +526,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       marketplace,
     );
 
-    console.log(`[Browser Agent] ${correlationId} - Processing request for ${marketplace}`);
+    console.log(
+      `[Browser Agent] ${correlationId} - Processing request for ${marketplace}`,
+    );
 
     // Call AI with reasoning enabled (Gemini 3 Pro)
     const aiResponse = await fetch(
@@ -472,7 +570,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     try {
       actions = parseAIResponse(content);
     } catch (parseError) {
-      console.error(`[Browser Agent] ${correlationId} - Failed to parse AI response:`, content);
+      console.error(
+        `[Browser Agent] ${correlationId} - Failed to parse AI response:`,
+        content,
+      );
       actions = [
         {
           action: "error",
@@ -485,8 +586,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     actions = actions.slice(0, 5);
 
     const processingTimeMs = Date.now() - startTime;
-    
-    console.log(`[Browser Agent] ${correlationId} - Success (${processingTimeMs}ms, ${actions.length} actions)`);
+
+    console.log(
+      `[Browser Agent] ${correlationId} - Success (${processingTimeMs}ms, ${actions.length} actions)`,
+    );
 
     return jsonResponse({
       success: true,
@@ -501,7 +604,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
     });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     console.error(`[Browser Agent] ${correlationId} - Error:`, error);
 
     return jsonResponse(
