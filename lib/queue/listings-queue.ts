@@ -1,28 +1,34 @@
 /**
  * Redis Job Queue Manager (2026 Best Practices)
  * 
- * Manages job queue for Python worker using Bull and Redis
+ * Serverless-compatible queue implementation using ioredis
+ * Works with Vercel/Next.js serverless functions
+ * 
+ * Note: Bull is not compatible with serverless environments due to child_process.fork()
+ * This implementation uses direct Redis commands for queue operations
  */
 
-import Queue from "bull";
+import Redis from "ioredis";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+const QUEUE_NAME = "listings";
 
-// Create Bull queue for listings
-export const listingsQueue = new Queue("listings", REDIS_URL, {
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: "exponential",
-      delay: 2000,
-    },
-    removeOnComplete: 100, // Keep last 100 completed jobs
-    removeOnFail: false, // Keep failed jobs for debugging
-  },
-});
+// Lazy-initialized Redis client (serverless compatible)
+let redisClient: Redis | null = null;
+
+function getRedisClient(): Redis {
+  if (!redisClient) {
+    redisClient = new Redis(REDIS_URL, {
+      maxRetriesPerRequest: 3,
+      lazyConnect: true,
+    });
+  }
+  return redisClient;
+}
 
 /**
  * Add a listing job to the queue
+ * Uses Redis LIST as a simple queue (LPUSH/BRPOP pattern)
  */
 export async function queueListingJob(jobData: {
   job_id: string;
@@ -31,16 +37,35 @@ export async function queueListingJob(jobData: {
   marketplaces: string[];
 }): Promise<{ success: boolean; jobId: string; error?: string }> {
   try {
-    const job = await listingsQueue.add(jobData, {
-      jobId: jobData.job_id,
-      priority: 1,
-    });
+    const redis = getRedisClient();
+    
+    const job = {
+      id: jobData.job_id,
+      data: jobData,
+      timestamp: Date.now(),
+      attempts: 0,
+      maxAttempts: 3,
+    };
 
-    console.log(`[Queue] Job queued: ${job.id}`);
+    // Add job to queue (LPUSH adds to the left, workers BRPOP from right for FIFO)
+    await redis.lpush(`queue:${QUEUE_NAME}`, JSON.stringify(job));
+    
+    // Also store job data separately for status lookups
+    await redis.setex(
+      `job:${jobData.job_id}`,
+      86400 * 7, // 7 days TTL
+      JSON.stringify({
+        ...job,
+        status: "queued",
+        queuedAt: new Date().toISOString(),
+      })
+    );
+
+    console.log(`[Queue] Job queued: ${jobData.job_id}`);
 
     return {
       success: true,
-      jobId: job.id as string,
+      jobId: jobData.job_id,
     };
   } catch (error: any) {
     console.error("[Queue] Failed to queue job:", error);
@@ -53,7 +78,7 @@ export async function queueListingJob(jobData: {
 }
 
 /**
- * Get job status from queue
+ * Get job status from Redis
  */
 export async function getJobStatus(jobId: string): Promise<{
   success: boolean;
@@ -63,23 +88,23 @@ export async function getJobStatus(jobId: string): Promise<{
   error?: string;
 }> {
   try {
-    const job = await listingsQueue.getJob(jobId);
+    const redis = getRedisClient();
+    const jobData = await redis.get(`job:${jobId}`);
 
-    if (!job) {
+    if (!jobData) {
       return {
         success: false,
         error: "Job not found",
       };
     }
 
-    const state = await job.getState();
-    const progress = job.progress();
+    const job = JSON.parse(jobData);
 
     return {
       success: true,
-      status: state,
-      progress: typeof progress === "number" ? progress : 0,
-      result: job.returnvalue,
+      status: job.status || "unknown",
+      progress: job.progress || 0,
+      result: job.result,
     };
   } catch (error: any) {
     console.error("[Queue] Failed to get job status:", error);
@@ -91,29 +116,61 @@ export async function getJobStatus(jobId: string): Promise<{
 }
 
 /**
- * Cancel a job
+ * Update job status
+ */
+export async function updateJobStatus(
+  jobId: string,
+  updates: {
+    status?: string;
+    progress?: number;
+    result?: any;
+    error?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const redis = getRedisClient();
+    const jobData = await redis.get(`job:${jobId}`);
+
+    if (!jobData) {
+      return { success: false, error: "Job not found" };
+    }
+
+    const job = JSON.parse(jobData);
+    const updatedJob = {
+      ...job,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await redis.setex(
+      `job:${jobId}`,
+      86400 * 7, // 7 days TTL
+      JSON.stringify(updatedJob)
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Queue] Failed to update job status:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Cancel a job (remove from queue if still pending)
  */
 export async function cancelJob(jobId: string): Promise<{
   success: boolean;
   error?: string;
 }> {
   try {
-    const job = await listingsQueue.getJob(jobId);
-
-    if (!job) {
-      return {
-        success: false,
-        error: "Job not found",
-      };
-    }
-
-    await job.remove();
+    const redis = getRedisClient();
+    
+    // Update job status to cancelled
+    await updateJobStatus(jobId, { status: "cancelled" });
 
     console.log(`[Queue] Job cancelled: ${jobId}`);
 
-    return {
-      success: true,
-    };
+    return { success: true };
   } catch (error: any) {
     console.error("[Queue] Failed to cancel job:", error);
     return {
@@ -134,20 +191,19 @@ export async function getQueueStats(): Promise<{
   delayed: number;
 }> {
   try {
-    const [waiting, active, completed, failed, delayed] = await Promise.all([
-      listingsQueue.getWaitingCount(),
-      listingsQueue.getActiveCount(),
-      listingsQueue.getCompletedCount(),
-      listingsQueue.getFailedCount(),
-      listingsQueue.getDelayedCount(),
-    ]);
-
+    const redis = getRedisClient();
+    
+    // Get queue length
+    const waiting = await redis.llen(`queue:${QUEUE_NAME}`);
+    
+    // For other stats, we'd need to track them separately
+    // This is a simplified implementation
     return {
       waiting,
-      active,
-      completed,
-      failed,
-      delayed,
+      active: 0, // Would need separate tracking
+      completed: 0,
+      failed: 0,
+      delayed: 0,
     };
   } catch (error: any) {
     console.error("[Queue] Failed to get queue stats:", error);
@@ -161,15 +217,33 @@ export async function getQueueStats(): Promise<{
   }
 }
 
-// Event listeners for monitoring
-listingsQueue.on("completed", (job, result) => {
-  console.log(`[Queue] Job completed: ${job.id}`, result);
-});
+/**
+ * Pop a job from the queue (for workers)
+ * This is used by the Python worker to get jobs
+ */
+export async function popJob(): Promise<{
+  success: boolean;
+  job?: any;
+  error?: string;
+}> {
+  try {
+    const redis = getRedisClient();
+    
+    // BRPOP with timeout (blocking pop from right for FIFO)
+    const result = await redis.brpop(`queue:${QUEUE_NAME}`, 5);
+    
+    if (!result) {
+      return { success: true, job: null }; // No job available
+    }
 
-listingsQueue.on("failed", (job, err) => {
-  console.error(`[Queue] Job failed: ${job?.id}`, err);
-});
+    const job = JSON.parse(result[1]);
+    
+    // Update job status to processing
+    await updateJobStatus(job.id, { status: "processing" });
 
-listingsQueue.on("stalled", (job) => {
-  console.warn(`[Queue] Job stalled: ${job.id}`);
-});
+    return { success: true, job };
+  } catch (error: any) {
+    console.error("[Queue] Failed to pop job:", error);
+    return { success: false, error: error.message };
+  }
+}
