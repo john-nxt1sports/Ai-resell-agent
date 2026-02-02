@@ -9,7 +9,7 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "tabs", "activeTab", "scripting", "notifications"],
+  "permissions": ["storage", "tabs", "activeTab", "scripting", "notifications", "cookies"],
   "host_permissions": [
     "https://ai-resell-agent.vercel.app/*",
     "https://*.listingsai.com/*",
