@@ -1,6 +1,9 @@
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Analytics } from "@/components/pages/Analytics";
 
+// Force dynamic rendering - this page requires authentication
+export const dynamic = "force-dynamic";
+
 export default function AnalyticsPage() {
   return (
     <MainLayout>
