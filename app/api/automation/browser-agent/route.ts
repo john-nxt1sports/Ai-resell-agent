@@ -26,8 +26,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "edge";
 export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+
+// Validate API key at startup
+if (!OPENROUTER_API_KEY) {
+  console.warn("[Browser Agent] WARNING: OPENROUTER_API_KEY not configured");
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -418,6 +424,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           actions: [],
         },
         400,
+      );
+    }
+
+    // Check API key is configured
+    if (!OPENROUTER_API_KEY) {
+      console.error(`[Browser Agent] ${correlationId} - OPENROUTER_API_KEY not configured`);
+      return jsonResponse(
+        {
+          success: false,
+          error: "Server configuration error: AI API key not configured",
+          actions: [],
+        },
+        500,
       );
     }
 
