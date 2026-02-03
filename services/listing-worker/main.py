@@ -16,7 +16,8 @@ from dotenv import load_dotenv
 
 # Import Redis and job queue
 from redis import Redis
-from rq import Worker, Queue, Connection
+from rq import Worker, Queue
+from rq.connections import push_connection, pop_connection
 
 # Import our modules
 from orchestrator.job_processor import JobProcessor
@@ -165,9 +166,12 @@ class ListingWorker:
         """
         logger.info("Starting worker...")
         
-        with Connection(self.redis):
+        push_connection(self.redis)
+        try:
             worker = Worker([self.queue], log_job_description=True)
             worker.work(with_scheduler=True)
+        finally:
+            pop_connection()
 
 
 def main():
