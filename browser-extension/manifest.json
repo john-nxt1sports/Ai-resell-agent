@@ -11,6 +11,7 @@
   },
   "permissions": ["storage", "tabs", "activeTab", "scripting", "notifications", "cookies"],
   "host_permissions": [
+    "https://ai-resell-agent-production.up.railway.app/*",
     "https://ai-resell-agent.vercel.app/*",
     "https://*.listingsai.com/*",
     "http://localhost:3000/*",
@@ -28,6 +29,7 @@
   "content_scripts": [
     {
       "matches": [
+        "https://ai-resell-agent-production.up.railway.app/*",
         "https://ai-resell-agent.vercel.app/*",
         "https://*.listingsai.com/*",
         "http://localhost:3000/*"

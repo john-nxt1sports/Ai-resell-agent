@@ -1,9 +1,9 @@
 /**
  * Redis Job Queue Manager (2026 Best Practices)
- * 
+ *
  * Serverless-compatible queue implementation using ioredis
  * Works with Vercel/Next.js serverless functions
- * 
+ *
  * Note: Bull is not compatible with serverless environments due to child_process.fork()
  * This implementation uses direct Redis commands for queue operations
  */
@@ -38,7 +38,7 @@ export async function queueListingJob(jobData: {
 }): Promise<{ success: boolean; jobId: string; error?: string }> {
   try {
     const redis = getRedisClient();
-    
+
     const job = {
       id: jobData.job_id,
       data: jobData,
@@ -49,7 +49,7 @@ export async function queueListingJob(jobData: {
 
     // Add job to queue (LPUSH adds to the left, workers BRPOP from right for FIFO)
     await redis.lpush(`queue:${QUEUE_NAME}`, JSON.stringify(job));
-    
+
     // Also store job data separately for status lookups
     await redis.setex(
       `job:${jobData.job_id}`,
@@ -58,7 +58,7 @@ export async function queueListingJob(jobData: {
         ...job,
         status: "queued",
         queuedAt: new Date().toISOString(),
-      })
+      }),
     );
 
     console.log(`[Queue] Job queued: ${jobData.job_id}`);
@@ -125,7 +125,7 @@ export async function updateJobStatus(
     progress?: number;
     result?: any;
     error?: string;
-  }
+  },
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const redis = getRedisClient();
@@ -145,7 +145,7 @@ export async function updateJobStatus(
     await redis.setex(
       `job:${jobId}`,
       86400 * 7, // 7 days TTL
-      JSON.stringify(updatedJob)
+      JSON.stringify(updatedJob),
     );
 
     return { success: true };
@@ -164,7 +164,7 @@ export async function cancelJob(jobId: string): Promise<{
 }> {
   try {
     const redis = getRedisClient();
-    
+
     // Update job status to cancelled
     await updateJobStatus(jobId, { status: "cancelled" });
 
@@ -192,10 +192,10 @@ export async function getQueueStats(): Promise<{
 }> {
   try {
     const redis = getRedisClient();
-    
+
     // Get queue length
     const waiting = await redis.llen(`queue:${QUEUE_NAME}`);
-    
+
     // For other stats, we'd need to track them separately
     // This is a simplified implementation
     return {
@@ -228,16 +228,16 @@ export async function popJob(): Promise<{
 }> {
   try {
     const redis = getRedisClient();
-    
+
     // BRPOP with timeout (blocking pop from right for FIFO)
     const result = await redis.brpop(`queue:${QUEUE_NAME}`, 5);
-    
+
     if (!result) {
       return { success: true, job: null }; // No job available
     }
 
     const job = JSON.parse(result[1]);
-    
+
     // Update job status to processing
     await updateJobStatus(job.id, { status: "processing" });
 

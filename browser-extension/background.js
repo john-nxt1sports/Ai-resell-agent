@@ -10,6 +10,7 @@ importScripts("session-capture.js");
 // Configuration - Production URLs
 const CONFIG = {
   APP_URLS: [
+    "https://ai-resell-agent-production.up.railway.app",
     "https://ai-resell-agent.vercel.app",
     "https://listingsai.com",
     "https://www.listingsai.com",
