@@ -23,8 +23,7 @@ const AgenticCore = (function () {
 
   const Config = Object.freeze({
     API_ENDPOINTS: Object.freeze([
-      "https://ai-resell-agent.vercel.app/api/automation/browser-agent",
-      "https://listingsai.com/api/automation/browser-agent",
+      "https://ai-resell-agent-production.up.railway.app/api/automation/browser-agent",
       "http://localhost:3000/api/automation/browser-agent",
     ]),
     TIMING: Object.freeze({
@@ -670,7 +669,7 @@ const AgenticCore = (function () {
         }
       }
 
-      this._endpoint = Config.API_ENDPOINTS[2];
+      this._endpoint = Config.API_ENDPOINTS[1]; // Fallback to localhost
       return this._endpoint;
     },
 

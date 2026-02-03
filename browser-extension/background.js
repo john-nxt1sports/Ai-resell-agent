@@ -11,9 +11,6 @@ importScripts("session-capture.js");
 const CONFIG = {
   APP_URLS: [
     "https://ai-resell-agent-production.up.railway.app",
-    "https://ai-resell-agent.vercel.app",
-    "https://listingsai.com",
-    "https://www.listingsai.com",
     "http://localhost:3000",
   ],
   MARKETPLACES: {
