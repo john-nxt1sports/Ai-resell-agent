@@ -3,6 +3,11 @@ const nextConfig = {
   reactStrictMode: true,
   // Enable standalone output for Docker deployment
   output: "standalone",
+  // Expose env vars to browser at runtime
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  },
   images: {
     remotePatterns: [
       {
