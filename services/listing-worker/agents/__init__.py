@@ -19,9 +19,14 @@ from .mercari_agent import (
     MercariListingAgent,
     MercariSmartPricingAgent,
 )
+from .flyp_agent import (
+    FlypCrosslisterAgent,
+    FlypBulkAgent,
+    FlypDraftAgent,
+)
 
-# Content optimization
-from .researcher import ResearcherAgent, OptimizedContent
+# Content optimization & market research
+from .researcher import ResearcherAgent, OptimizedContent, MarketResearch, MarketComp
 
 __all__ = [
     # Base
@@ -40,7 +45,14 @@ __all__ = [
     "MercariListingAgent",
     "MercariSmartPricingAgent",
     
-    # Research
+    # Flyp (Crosslister)
+    "FlypCrosslisterAgent",
+    "FlypBulkAgent",
+    "FlypDraftAgent",
+    
+    # Research & Market Intelligence
     "ResearcherAgent",
     "OptimizedContent",
+    "MarketResearch",
+    "MarketComp",
 ]

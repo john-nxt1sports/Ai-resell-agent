@@ -3,6 +3,7 @@ Job Processor - Orchestrates listing creation across marketplaces (2026 Best Pra
 """
 
 import asyncio
+import os
 from typing import Dict, Any, List
 import structlog
 from datetime import datetime
@@ -11,6 +12,7 @@ from agents.researcher import ResearcherAgent
 from agents.poshmark_agent import PoshmarkListingAgent
 from agents.ebay_agent import EbayListingAgent
 from agents.mercari_agent import MercariListingAgent
+from agents.flyp_agent import FlypCrosslisterAgent
 from orchestrator.state_manager import StateManager
 from utils.session_loader import SessionLoader
 
@@ -22,10 +24,14 @@ class JobProcessor:
     Processes listing jobs by coordinating multiple agents.
     
     Flow:
-    1. Load user sessions from database
+    1. Load user sessions from database (cloud mode only)
     2. Research and optimize listing content (Researcher Agent)
     3. Post to each marketplace in parallel (Platform-specific Agents)
     4. Save results and notify user
+    
+    Modes:
+    - CLOUD: Uses captured sessions, runs in background (production)
+    - LOCAL: Connects to user's Chrome via CDP (testing/personal use)
     
     Features:
     - Checkpoint-based recovery
@@ -34,15 +40,28 @@ class JobProcessor:
     - Error isolation (one failure doesn't stop others)
     """
     
-    def __init__(self):
+    def __init__(self, mode: str = None):
+        """
+        Initialize job processor.
+        
+        Args:
+            mode: "cloud" or "local" - defaults to BROWSER_MODE env var
+        """
+        self.mode = mode or os.getenv('BROWSER_MODE', 'cloud').lower()
         self.session_loader = SessionLoader()
         self.researcher = ResearcherAgent()
         
-        # Platform-specific agents
+        logger.info(
+            "JobProcessor initialized",
+            mode=self.mode
+        )
+        
+        # Platform-specific agents - initialized with mode
         self.agents = {
-            'poshmark': PoshmarkListingAgent(),
-            'ebay': EbayListingAgent(),
-            'mercari': MercariListingAgent(),
+            'poshmark': PoshmarkListingAgent(mode=self.mode),
+            'ebay': EbayListingAgent(mode=self.mode),
+            'mercari': MercariListingAgent(mode=self.mode),
+            'flyp': FlypCrosslisterAgent(mode=self.mode),
         }
     
     async def process(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,11 +105,40 @@ class JobProcessor:
             }
         
         try:
-            # Step 1: Research and optimize listing (if not already done)
+            # Step 1: Research and optimize listing
+            # Skip if frontend already ran the smart analysis pipeline
             if state['current_step'] == 'start':
-                logger.info("Step 1: Researching and optimizing listing", job_id=job_id)
+                has_frontend_research = (
+                    listing.get('platformContent') and
+                    listing.get('marketResearch')
+                )
                 
-                optimized_listing = await self.researcher.analyze_and_optimize(listing)
+                if has_frontend_research:
+                    logger.info(
+                        "Step 1: Using frontend smart-analysis data (skipping re-research)",
+                        job_id=job_id
+                    )
+                    # Build optimized listing from frontend data
+                    optimized_listing = dict(listing)
+                    platform_content = listing.get('platformContent', {})
+                    
+                    # Map frontend platformContent into the format agents expect
+                    for mp in ['ebay', 'poshmark', 'mercari', 'flyp']:
+                        if mp in platform_content:
+                            pc = platform_content[mp]
+                            optimized_listing[f'{mp}_title'] = pc.get('title', listing.get('title', ''))
+                            optimized_listing[f'{mp}_description'] = pc.get('description', listing.get('description', ''))
+                            optimized_listing[f'{mp}_hashtags'] = pc.get('hashtags', [])
+                    
+                    # Attach market research metadata
+                    mr = listing.get('marketResearch')
+                    if mr:
+                        optimized_listing['market_research'] = mr
+                        if mr.get('recommendedPrice'):
+                            optimized_listing['suggested_price'] = mr['recommendedPrice']
+                else:
+                    logger.info("Step 1: Researching and optimizing listing", job_id=job_id)
+                    optimized_listing = await self.researcher.analyze_and_optimize(listing)
                 
                 state['optimized_listing'] = optimized_listing
                 state['current_step'] = 'research_complete'
@@ -98,27 +146,39 @@ class JobProcessor:
                 
                 logger.info("Research complete", job_id=job_id)
             
-            # Step 2: Load user sessions for each marketplace
+            # Step 2: Load user sessions for each marketplace (cloud mode only)
             if 'sessions' not in state:
-                logger.info("Step 2: Loading user sessions", job_id=job_id)
+                logger.info(
+                    "Step 2: Loading user sessions",
+                    job_id=job_id,
+                    mode=self.mode
+                )
                 
                 sessions = {}
-                for marketplace in state['pending_platforms']:
-                    session = await self.session_loader.load_session(user_id, marketplace)
-                    if session:
-                        sessions[marketplace] = session
-                    else:
-                        logger.warning(
-                            "No session found for marketplace",
-                            marketplace=marketplace,
-                            user_id=user_id
-                        )
-                        state['results'][marketplace] = {
-                            'success': False,
-                            'error': 'No session found - user needs to log in',
-                        }
-                        state['completed_platforms'].append(marketplace)
-                        state['pending_platforms'].remove(marketplace)
+                
+                # In local mode, we don't need sessions - browser already has cookies
+                if self.mode == "local":
+                    logger.info("Local mode - using existing browser sessions")
+                    for marketplace in state['pending_platforms']:
+                        sessions[marketplace] = {"mode": "local"}  # Placeholder
+                else:
+                    # Cloud mode - load captured sessions from database
+                    for marketplace in state['pending_platforms']:
+                        session = await self.session_loader.load_session(user_id, marketplace)
+                        if session:
+                            sessions[marketplace] = session
+                        else:
+                            logger.warning(
+                                "No session found for marketplace",
+                                marketplace=marketplace,
+                                user_id=user_id
+                            )
+                            state['results'][marketplace] = {
+                                'success': False,
+                                'error': 'No session found - user needs to log in and sync via browser extension',
+                            }
+                            state['completed_platforms'].append(marketplace)
+                            state['pending_platforms'].remove(marketplace)
                 
                 state['sessions'] = sessions
                 state['current_step'] = 'sessions_loaded'

@@ -1,18 +1,27 @@
 # Browser automation (2026 state-of-the-art)
-browser-use>=0.7.7
-playwright>=1.40.0
+browser-use>=0.1.40
+playwright>=1.48.0
+
+# LangChain for LLM integration with browser-use
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-core>=0.3.0
+
+# Cryptography for session decryption
+cryptography>=42.0.0
 
 # Job queue and async processing
-redis>=5.0.0
-rq>=1.16.0
+redis>=5.2.0
+rq>=2.0.0
 
 # HTTP client
-httpx>=0.27.0
-requests>=2.31.0
+httpx>=0.28.0
+requests>=2.32.0
+aiohttp>=3.10.0
 
 # Data validation and parsing
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
 
 # Environment management
 python-dotenv>=1.0.0
@@ -21,13 +30,18 @@ python-dotenv>=1.0.0
 supabase>=2.0.0
 
 # AI/LLM integration
-openai>=1.10.0
-anthropic>=0.25.0
+openai>=1.60.0
+anthropic>=0.40.0
 
 # Utilities
-tenacity>=8.2.3
-structlog>=24.1.0
-python-dateutil>=2.8.2
+tenacity>=9.0.0
+structlog>=25.1.0
+python-dateutil>=2.9.0
+orjson>=3.10.0
 
 # Image processing
-pillow>=10.0.0
+pillow>=11.0.0
+
+# Type checking (dev)
+mypy>=1.13.0
+ruff>=0.8.0

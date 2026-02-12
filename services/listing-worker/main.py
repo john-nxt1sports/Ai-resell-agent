@@ -4,40 +4,38 @@ Autonomous Cross-Listing Worker - Main Entry Point (2026 Best Practices)
 This worker processes listing jobs from Redis queue and uses browser-use
 to autonomously post listings to multiple marketplaces.
 
-User can close their browser - this keeps running in the cloud.
+Consumes jobs from queue:listings (BRPOP pattern matching the TypeScript frontend).
 """
 
 import asyncio
+import json
 import os
 import sys
+import ssl
+import certifi
 from typing import Dict, Any
 import structlog
 from dotenv import load_dotenv
-
-# Import Redis and job queue
 from redis import Redis
-from rq import Worker, Queue
+
+# Load environment variables FIRST
+load_dotenv()
+
+# Fix macOS SSL for browser-use extension downloads
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 
 # Import our modules
 from orchestrator.job_processor import JobProcessor
-from utils.metrics import MetricsTracker
-from utils.notifications import NotificationService
-
-# Load environment variables
-load_dotenv()
 
 # Configure structured logging
 structlog.configure(
     processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
+        structlog.dev.ConsoleRenderer()
     ],
     wrapper_class=structlog.stdlib.BoundLogger,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -46,45 +44,76 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+# Queue name matching the TypeScript frontend (lib/queue/listings-queue.ts)
+QUEUE_KEY = "queue:listings"
+PROCESSING_KEY = "queue:processing"  # Jobs currently being worked on
+JOB_KEY_PREFIX = "job:"
+
 
 class ListingWorker:
     """
     Main worker class that processes listing jobs autonomously.
     
-    Features:
-    - Runs 24/7 in the cloud
-    - User can close their browser - worker continues
-    - Uses browser-use with cloud browsers
-    - Automatic retries and error handling
-    - State checkpointing for recovery
+    Consumes from queue:listings using BRPOP (matching the TypeScript
+    frontend's LPUSH). This is a simple, reliable queue pattern that
+    works without RQ/Bull dependencies.
     """
     
     def __init__(self):
         self.redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-        self.redis = Redis.from_url(self.redis_url)
-        self.queue = Queue('listings', connection=self.redis)
+        self.redis = Redis.from_url(self.redis_url, decode_responses=True)
         self.job_processor = JobProcessor()
-        self.metrics = MetricsTracker(self.redis)
-        self.notifications = NotificationService()
         
-        logger.info("ListingWorker initialized", redis_url=self.redis_url)
+        # Recover any jobs stuck in processing queue from previous crash
+        self._recover_stuck_jobs()
+        
+        logger.info("ListingWorker initialized", redis_url=self.redis_url, mode=self.job_processor.mode)
+    
+    def _recover_stuck_jobs(self):
+        """Move any jobs stuck in processing queue back to main queue."""
+        try:
+            stuck_jobs = self.redis.lrange(PROCESSING_KEY, 0, -1)
+            if stuck_jobs:
+                logger.info("Recovering stuck jobs from previous run", count=len(stuck_jobs))
+                for job in stuck_jobs:
+                    # Push back to front of main queue (LPUSH = high priority)
+                    self.redis.lpush(QUEUE_KEY, job)
+                # Clear processing queue
+                self.redis.delete(PROCESSING_KEY)
+        except Exception as e:
+            logger.error("Failed to recover stuck jobs", error=str(e))
+    
+    def _remove_from_processing(self, raw_job: str):
+        """Remove a job from the processing queue after completion."""
+        try:
+            self.redis.lrem(PROCESSING_KEY, 1, raw_job)
+        except Exception as e:
+            logger.error("Failed to remove job from processing queue", error=str(e))
+    
+    def _update_job_status(self, job_id: str, status: str, result: Dict = None, error: str = None):
+        """Update job status in Redis (readable by frontend via getJobStatus)."""
+        try:
+            existing = self.redis.get(f"{JOB_KEY_PREFIX}{job_id}")
+            job_data = json.loads(existing) if existing else {}
+            
+            job_data["status"] = status
+            if result:
+                job_data["result"] = result
+                job_data["progress"] = 100 if result.get("success") else job_data.get("progress", 0)
+            if error:
+                job_data["error"] = error
+            
+            self.redis.setex(
+                f"{JOB_KEY_PREFIX}{job_id}",
+                86400 * 7,  # 7 days TTL
+                json.dumps(job_data)
+            )
+        except Exception as e:
+            logger.error("Failed to update job status", job_id=job_id, error=str(e))
     
     async def process_job(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process a single listing job autonomously.
-        
-        This method runs even if user closes their browser.
-        It coordinates all agents and handles the full listing flow.
-        
-        Args:
-            job_data: Job data containing:
-                - user_id: User ID
-                - listing: Listing data (title, description, images, etc.)
-                - marketplaces: List of marketplaces to post to
-                - job_id: Unique job ID
-        
-        Returns:
-            Dictionary with results for each marketplace
         """
         job_id = job_data.get('job_id', 'unknown')
         user_id = job_data.get('user_id')
@@ -99,31 +128,17 @@ class ListingWorker:
             listing_title=listing.get('title', 'Unknown')
         )
         
+        self._update_job_status(job_id, "processing")
+        
         try:
-            # Use JobProcessor to handle the job
             results = await self.job_processor.process(job_data)
             
-            # Track metrics
-            await self.metrics.record_job_completion(
-                job_id=job_id,
-                user_id=user_id,
-                success=results.get('success', False),
-                marketplaces=marketplaces
-            )
-            
-            # Send completion notification to user
-            await self.notifications.send_completion_notification(
-                user_id=user_id,
-                job_id=job_id,
-                listing=listing,
-                results=results
-            )
+            self._update_job_status(job_id, "completed", result=results)
             
             logger.info(
                 "Job completed",
                 job_id=job_id,
                 success=results.get('success', False),
-                results=results
             )
             
             return results
@@ -136,20 +151,7 @@ class ListingWorker:
                 exc_info=True
             )
             
-            # Track failure
-            await self.metrics.record_job_failure(
-                job_id=job_id,
-                user_id=user_id,
-                error=str(e)
-            )
-            
-            # Notify user of failure
-            await self.notifications.send_failure_notification(
-                user_id=user_id,
-                job_id=job_id,
-                listing=listing,
-                error=str(e)
-            )
+            self._update_job_status(job_id, "failed", error=str(e))
             
             return {
                 'success': False,
@@ -159,37 +161,73 @@ class ListingWorker:
     
     def run(self):
         """
-        Start the worker to process jobs from the queue.
+        Start the worker — blocks forever, processing jobs as they arrive.
         
-        This runs indefinitely, processing jobs as they arrive.
+        Uses BRPOPLPUSH to atomically move jobs from queue:listings to queue:processing.
+        Jobs stay in processing queue until completed, so they can be recovered on crash.
         """
-        logger.info("Starting worker...")
+        logger.info(
+            "Worker started — waiting for jobs...",
+            queue=QUEUE_KEY,
+            mode=self.job_processor.mode
+        )
         
-        worker = Worker([self.queue], connection=self.redis, log_job_description=True)
-        worker.work(with_scheduler=True)
+        while True:
+            try:
+                # BRPOPLPUSH atomically moves job from main queue to processing queue
+                # Job stays in processing queue until we explicitly remove it after completion
+                raw_job = self.redis.brpoplpush(QUEUE_KEY, PROCESSING_KEY, timeout=5)
+                
+                if raw_job is None:
+                    continue  # Timeout, loop back
+                
+                try:
+                    job_envelope = json.loads(raw_job)
+                    # The frontend wraps job_data inside { id, data, timestamp, ... }
+                    job_data = job_envelope.get("data", job_envelope)
+                    
+                    logger.info(
+                        "Received job from queue",
+                        job_id=job_data.get("job_id", "unknown"),
+                        title=job_data.get("listing", {}).get("title", "Unknown")
+                    )
+                    
+                    # Run async job processor
+                    asyncio.run(self.process_job(job_data))
+                    
+                    # Job completed (success or failure) - remove from processing queue
+                    self._remove_from_processing(raw_job)
+                    
+                except json.JSONDecodeError as e:
+                    logger.error("Invalid job data in queue", error=str(e), raw=raw_job[:200])
+                    # Remove invalid job from processing queue
+                    self._remove_from_processing(raw_job)
+                except Exception as e:
+                    logger.error("Failed to process job", error=str(e), exc_info=True)
+                    # Keep in processing queue for recovery on restart
+                    
+            except KeyboardInterrupt:
+                logger.info("Worker stopped by user")
+                break
+            except Exception as e:
+                logger.error("Worker error", error=str(e), exc_info=True)
+                # Brief pause before retrying
+                import time
+                time.sleep(2)
 
 
 def main():
     """Main entry point"""
-    logger.info("Starting Listing Worker Service (2026 Best Practices)")
+    logger.info("Starting Listing Worker Service")
     
     # Validate required environment variables
-    required_env_vars = [
-        'REDIS_URL',
-        'SUPABASE_URL',
-        'SUPABASE_SERVICE_ROLE_KEY',
-        'OPENROUTER_API_KEY'
-    ]
+    required_env_vars = ['OPENROUTER_API_KEY']
     
     missing_vars = [var for var in required_env_vars if not os.getenv(var)]
     if missing_vars:
-        logger.error(
-            "Missing required environment variables",
-            missing_vars=missing_vars
-        )
+        logger.error("Missing required environment variables", missing_vars=missing_vars)
         sys.exit(1)
     
-    # Create and run worker
     worker = ListingWorker()
     
     try:
