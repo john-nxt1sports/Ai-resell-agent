@@ -7,7 +7,7 @@
 const SessionCapture = {
   /**
    * Capture all session data for a marketplace
-   * @param {string} marketplace - poshmark, ebay, mercari
+   * @param {string} marketplace - poshmark, ebay, mercari, flyp
    * @returns {Promise<Object>} Session data
    */
   async captureSessionData(marketplace) {
@@ -16,6 +16,7 @@ const SessionCapture = {
         poshmark: ["poshmark.com", ".poshmark.com"],
         ebay: ["ebay.com", ".ebay.com"],
         mercari: ["mercari.com", ".mercari.com"],
+        flyp: ["joinflyp.com", ".joinflyp.com", "tools.joinflyp.com"],
       };
 
       const domains = marketplaceDomains[marketplace] || [];
@@ -113,6 +114,7 @@ const SessionCapture = {
       poshmark: ["_poshmark_session", "user_id", "auth_token"],
       ebay: ["s", "nonsession", "dp1"],
       mercari: ["_mercari_session", "oauth_token"],
+      flyp: ["_flyp_session", "auth_token", "flyp_user"],
     };
 
     const patterns = authCookiePatterns[marketplace] || [];

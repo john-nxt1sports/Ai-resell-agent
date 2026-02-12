@@ -6,6 +6,7 @@ const MARKETPLACES = [
   { id: "poshmark", name: "Poshmark", loginUrl: "https://poshmark.com/login" },
   { id: "mercari", name: "Mercari", loginUrl: "https://www.mercari.com/login" },
   { id: "ebay", name: "eBay", loginUrl: "https://signin.ebay.com/signin" },
+  { id: "flyp", name: "Flyp", loginUrl: "https://tools.joinflyp.com" },
   { id: "depop", name: "Depop", loginUrl: "https://www.depop.com/login" },
 ];
 

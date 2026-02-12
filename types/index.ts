@@ -1,4 +1,4 @@
-export type Marketplace = "poshmark" | "mercari" | "ebay";
+export type Marketplace = "poshmark" | "mercari" | "ebay" | "flyp";
 
 export type ListingStatus = "draft" | "processing" | "published" | "failed";
 
@@ -43,6 +43,10 @@ export interface Listing {
   aiGenerated: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Smart analysis platform-specific content (ebay, poshmark, mercari, flyp) */
+  platformContent?: Record<string, any>;
+  /** Smart analysis market research data (comps, pricing, demand) */
+  marketResearch?: Record<string, any>;
 }
 
 // Marketplace listing from database

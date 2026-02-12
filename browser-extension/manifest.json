@@ -1,15 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "AI Resell Agent - Multi-Marketplace Poster",
-  "version": "1.0.1",
-  "description": "Automatically post your listings to Poshmark, Mercari, and eBay. Save hours with AI-powered cross-posting.",
+  "name": "ListingsAI - Session Capture & Cross-Posting",
+  "version": "2.0.1",
+  "description": "Captures your marketplace login sessions for automated cross-posting. Works with Poshmark, Mercari, eBay, and Flyp.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "tabs", "activeTab", "scripting", "notifications", "cookies"],
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "notifications",
+    "cookies"
+  ],
   "host_permissions": [
     "https://ai-resell-agent-production.up.railway.app/*",
     "http://localhost:3000/*",
@@ -18,7 +25,9 @@
     "https://mercari.com/*",
     "https://www.mercari.com/*",
     "https://ebay.com/*",
-    "https://www.ebay.com/*"
+    "https://www.ebay.com/*",
+    "https://tools.joinflyp.com/*",
+    "https://joinflyp.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -34,17 +43,17 @@
     },
     {
       "matches": ["https://poshmark.com/*", "https://www.poshmark.com/*"],
-      "js": ["content-scripts/agentic-core.js", "content-scripts/poshmark.js"],
+      "js": ["session-capture.js", "content-scripts/poshmark.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://mercari.com/*", "https://www.mercari.com/*"],
-      "js": ["content-scripts/agentic-core.js", "content-scripts/mercari.js"],
+      "js": ["session-capture.js", "content-scripts/mercari.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://ebay.com/*", "https://www.ebay.com/*"],
-      "js": ["content-scripts/agentic-core.js", "content-scripts/ebay.js"],
+      "js": ["session-capture.js", "content-scripts/ebay.js"],
       "run_at": "document_idle"
     }
   ],

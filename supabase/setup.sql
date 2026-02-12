@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 CREATE TABLE IF NOT EXISTS public.marketplace_connections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-  marketplace TEXT NOT NULL CHECK (marketplace IN ('ebay', 'poshmark', 'mercari')),
+  marketplace TEXT NOT NULL CHECK (marketplace IN ('ebay', 'poshmark', 'mercari', 'flyp')),
   access_token TEXT,
   refresh_token TEXT,
   is_connected BOOLEAN DEFAULT false,
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS public.listings (
 CREATE TABLE IF NOT EXISTS public.marketplace_listings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   listing_id UUID REFERENCES public.listings(id) ON DELETE CASCADE,
-  marketplace TEXT NOT NULL CHECK (marketplace IN ('ebay', 'poshmark', 'mercari')),
+  marketplace TEXT NOT NULL CHECK (marketplace IN ('ebay', 'poshmark', 'mercari', 'flyp')),
   marketplace_listing_id TEXT,
   marketplace_url TEXT,
   posted_at TIMESTAMP WITH TIME ZONE,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS public.analytics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
   listing_id UUID REFERENCES public.listings(id) ON DELETE CASCADE,
-  marketplace TEXT CHECK (marketplace IN ('ebay', 'poshmark', 'mercari')),
+  marketplace TEXT CHECK (marketplace IN ('ebay', 'poshmark', 'mercari', 'flyp')),
   metric_type TEXT NOT NULL CHECK (metric_type IN ('view', 'like', 'share', 'sale')),
   metric_value INTEGER DEFAULT 1,
   recorded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

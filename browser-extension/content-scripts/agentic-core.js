@@ -93,24 +93,33 @@ const AgenticCore = (function () {
      * @param {string} context - Context for logging
      * @returns {Promise<any>}
      */
-    async retryWithBackoff(fn, maxRetries = Config.LIMITS.MAX_RETRIES, context = "operation") {
+    async retryWithBackoff(
+      fn,
+      maxRetries = Config.LIMITS.MAX_RETRIES,
+      context = "operation",
+    ) {
       let lastError;
-      
+
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
           return await fn();
         } catch (error) {
           lastError = error;
-          
+
           if (attempt < maxRetries) {
             const delay = this.exponentialBackoff(attempt);
-            console.warn(`[AgenticCore] ${context} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`, error);
+            console.warn(
+              `[AgenticCore] ${context} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`,
+              error,
+            );
             await this.sleep(delay);
           }
         }
       }
-      
-      throw new Error(`${context} failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
+
+      throw new Error(
+        `${context} failed after ${maxRetries + 1} attempts: ${lastError?.message || "Unknown error"}`,
+      );
     },
 
     /**
@@ -173,23 +182,25 @@ const AgenticCore = (function () {
      */
     simulateMousePath(element) {
       if (!Config.STEALTH.ENABLE_MOUSE_SIMULATION) return;
-      
+
       const rect = element.getBoundingClientRect();
       const targetX = rect.left + rect.width / 2;
       const targetY = rect.top + rect.height / 2;
-      
+
       // Dispatch mousemove events along a curved path
       const steps = 3 + Math.floor(Math.random() * 3); // 3-5 steps
       for (let i = 0; i < steps; i++) {
         const progress = i / steps;
         const x = targetX + (Math.random() - 0.5) * 20;
         const y = targetY + (Math.random() - 0.5) * 20;
-        
-        element.dispatchEvent(new MouseEvent("mousemove", {
-          bubbles: true,
-          clientX: x,
-          clientY: y,
-        }));
+
+        element.dispatchEvent(
+          new MouseEvent("mousemove", {
+            bubbles: true,
+            clientX: x,
+            clientY: y,
+          }),
+        );
       }
     },
   };
@@ -495,7 +506,7 @@ const AgenticCore = (function () {
       el.dispatchEvent(new Event("focus", { bubbles: true }));
 
       const text = action.value || "";
-      
+
       // Human-like typing with variance (2026 anti-detection)
       for (const char of text) {
         el.value += char;
@@ -506,18 +517,18 @@ const AgenticCore = (function () {
         el.dispatchEvent(
           new KeyboardEvent("keyup", { bubbles: true, key: char }),
         );
-        
+
         // Variable typing speed with occasional pauses
         let delay = Config.TIMING.TYPE_CHAR_MS;
         if (Config.STEALTH.ENABLE_RANDOM_DELAYS) {
           delay = Utils.withJitter(delay, 0.5);
-          
+
           // Occasional longer pause (thinking time)
           if (Math.random() < Config.STEALTH.HUMAN_ERROR_RATE) {
             delay += Math.random() * 200;
           }
         }
-        
+
         await Utils.sleep(delay);
       }
 
@@ -538,9 +549,9 @@ const AgenticCore = (function () {
     async _performClick(el) {
       // Simulate mouse movement path (2026 anti-detection)
       Utils.simulateMousePath(el);
-      
+
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      
+
       // Variable click delay
       const clickDelay = Config.STEALTH.ENABLE_RANDOM_DELAYS
         ? Utils.withJitter(Config.TIMING.CLICK_DELAY_MS, 0.5)
@@ -588,14 +599,16 @@ const AgenticCore = (function () {
           const response = await fetch(urls[i]);
           if (response.ok) {
             const blob = await response.blob();
-            
+
             // Validate image (2026 - ensure proper format and size)
             if (blob.type.startsWith("image/") && blob.size > 0) {
               files.push(
                 new File([blob], `image_${i}.jpg`, { type: "image/jpeg" }),
               );
             } else {
-              console.warn(`[AgenticCore] Invalid image at index ${i}: ${blob.type}`);
+              console.warn(
+                `[AgenticCore] Invalid image at index ${i}: ${blob.type}`,
+              );
             }
           }
         } catch (error) {
@@ -609,7 +622,7 @@ const AgenticCore = (function () {
       files.forEach((f) => dt.items.add(f));
       fileInput.files = dt.files;
       fileInput.dispatchEvent(new Event("change", { bubbles: true }));
-      
+
       console.log(`[AgenticCore] Uploaded ${files.length} images successfully`);
       return true;
     },
@@ -693,11 +706,13 @@ const AgenticCore = (function () {
      */
     _recordFailure() {
       this._failureCount++;
-      
+
       if (this._failureCount >= 5) {
         this._circuitOpen = true;
         this._circuitOpenUntil = Date.now() + 30000; // 30 second timeout
-        console.error("[AgenticCore] Circuit breaker opened due to repeated failures");
+        console.error(
+          "[AgenticCore] Circuit breaker opened due to repeated failures",
+        );
       }
     },
 
@@ -719,13 +734,13 @@ const AgenticCore = (function () {
       this._checkCircuitBreaker();
 
       const correlationId = Utils.generateCorrelationId();
-      
+
       const apiCall = async () => {
         const endpoint = await this.getEndpoint();
 
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { 
+          headers: {
             "Content-Type": "application/json",
             "X-Correlation-ID": correlationId,
           },
@@ -750,9 +765,9 @@ const AgenticCore = (function () {
         const result = await Utils.retryWithBackoff(
           apiCall,
           Config.LIMITS.MAX_RETRIES,
-          "API call"
+          "API call",
         );
-        
+
         this._recordSuccess();
         return result;
       } catch (error) {
@@ -771,11 +786,11 @@ const AgenticCore = (function () {
       'iframe[src*="recaptcha"]',
       'iframe[src*="hcaptcha"]',
       'iframe[src*="captcha"]',
-      '.g-recaptcha',
-      '.h-captcha',
-      '[data-sitekey]',
-      '#captcha',
-      '.captcha',
+      ".g-recaptcha",
+      ".h-captcha",
+      "[data-sitekey]",
+      "#captcha",
+      ".captcha",
     ]),
 
     /**
@@ -787,17 +802,23 @@ const AgenticCore = (function () {
         const element = document.querySelector(selector);
         if (element && DOMInspector.isVisible(element)) {
           let type = "unknown";
-          
-          if (selector.includes("recaptcha") || element.classList.contains("g-recaptcha")) {
+
+          if (
+            selector.includes("recaptcha") ||
+            element.classList.contains("g-recaptcha")
+          ) {
             type = "recaptcha";
-          } else if (selector.includes("hcaptcha") || element.classList.contains("h-captcha")) {
+          } else if (
+            selector.includes("hcaptcha") ||
+            element.classList.contains("h-captcha")
+          ) {
             type = "hcaptcha";
           }
-          
+
           return { detected: true, type, element };
         }
       }
-      
+
       return { detected: false, type: null, element: null };
     },
 
@@ -808,17 +829,17 @@ const AgenticCore = (function () {
      */
     async waitForSolution(timeout = 60000) {
       const startTime = Date.now();
-      
+
       while (Date.now() - startTime < timeout) {
         const captcha = this.detect();
         if (!captcha.detected) {
           console.log("[AgenticCore] CAPTCHA appears to be solved");
           return true;
         }
-        
+
         await Utils.sleep(1000);
       }
-      
+
       console.warn("[AgenticCore] CAPTCHA wait timeout");
       return false;
     },
@@ -872,7 +893,7 @@ const AgenticCore = (function () {
     APIClient,
     ModalHandler,
     CaptchaDetector, // 2026 addition
-    
+
     // Version info
     version: "3.0.0",
     updated: "2026-01-29",
@@ -882,5 +903,7 @@ const AgenticCore = (function () {
 // Export for content scripts
 if (typeof window !== "undefined") {
   window.AgenticCore = AgenticCore;
-  console.log(`[AgenticCore] v${AgenticCore.version} loaded (updated: ${AgenticCore.updated})`);
+  console.log(
+    `[AgenticCore] v${AgenticCore.version} loaded (updated: ${AgenticCore.updated})`,
+  );
 }

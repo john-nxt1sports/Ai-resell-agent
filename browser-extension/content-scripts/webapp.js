@@ -5,6 +5,33 @@
 
 console.log("[AI Resell Agent] Web app content script loaded");
 
+// Try to get auth token from localStorage on load
+(async function initAuth() {
+  try {
+    // Check for Supabase auth token in localStorage
+    const keys = Object.keys(localStorage);
+    const supabaseKey = keys.find(
+      (k) => k.includes("supabase") && k.includes("auth"),
+    );
+
+    if (supabaseKey) {
+      const authData = JSON.parse(localStorage.getItem(supabaseKey) || "{}");
+      const accessToken = authData?.access_token;
+
+      if (accessToken) {
+        console.log("[AI Resell Agent] Found auth token, sending to extension");
+        await chrome.runtime.sendMessage({
+          type: "SET_AUTH_TOKEN",
+          authToken: accessToken,
+          apiUrl: window.location.origin,
+        });
+      }
+    }
+  } catch (e) {
+    console.log("[AI Resell Agent] Could not get auth token:", e.message);
+  }
+})();
+
 // Listen for messages from the web page
 window.addEventListener("message", async (event) => {
   // Only accept messages from the same origin
@@ -24,6 +51,34 @@ window.addEventListener("message", async (event) => {
           {
             type: "AI_RESELL_AGENT_PONG",
             extensionId: chrome.runtime.id,
+          },
+          "*",
+        );
+        break;
+
+      case "AI_RESELL_AGENT_SET_AUTH":
+        // Web app providing auth token
+        await chrome.runtime.sendMessage({
+          type: "SET_AUTH_TOKEN",
+          authToken: data.authToken,
+          apiUrl: data.apiUrl || window.location.origin,
+        });
+        window.postMessage(
+          { type: "AI_RESELL_AGENT_AUTH_SET", success: true },
+          "*",
+        );
+        break;
+
+      case "AI_RESELL_AGENT_CAPTURE_SESSION":
+        // Trigger session capture for a marketplace
+        const captureResponse = await chrome.runtime.sendMessage({
+          type: "CAPTURE_SESSION",
+          marketplace: data.marketplace,
+        });
+        window.postMessage(
+          {
+            type: "AI_RESELL_AGENT_SESSION_CAPTURED",
+            ...captureResponse,
           },
           "*",
         );

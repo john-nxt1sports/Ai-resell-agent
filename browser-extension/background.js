@@ -150,12 +150,69 @@ async function handleMessage(message, sender, sendResponse) {
 
       case "CAPTURE_SESSION":
         // Capture and sync session data for marketplace
+        // Get API URL and auth token from storage if not provided
+        const { settings = {} } = await chrome.storage.local.get("settings");
+        const captureApiUrl =
+          message.apiUrl || settings.apiUrl || CONFIG.APP_URLS[0];
+        const captureAuthToken = message.authToken || settings.authToken;
+
+        if (!captureAuthToken) {
+          // Try to get from web app via external connection
+          console.log(
+            "[Session Sync] No auth token - attempting to get from web app",
+          );
+          sendResponse({
+            success: false,
+            error: "Not authenticated. Please log in to ListingsAI first.",
+            needsAuth: true,
+          });
+          break;
+        }
+
         const sessionResult = await captureAndSyncSession(
           message.marketplace,
-          message.apiUrl,
-          message.authToken
+          captureApiUrl,
+          captureAuthToken,
         );
         sendResponse(sessionResult);
+        break;
+
+      case "LOGIN_STATUS_CHANGED":
+        // Content script reporting login status change
+        await updateLoginStatus(message.marketplace, message.isLoggedIn);
+
+        // If logged in and we have auth, capture session
+        if (message.isLoggedIn) {
+          const { settings: s = {} } =
+            await chrome.storage.local.get("settings");
+          if (s.authToken) {
+            captureAndSyncSession(
+              message.marketplace,
+              s.apiUrl || CONFIG.APP_URLS[0],
+              s.authToken,
+            ).catch((err) =>
+              console.error("[Session Sync] Auto-capture failed:", err),
+            );
+          }
+        }
+
+        // Notify web app
+        notifyWebApp("MARKETPLACE_LOGIN_CHANGED", {
+          marketplace: message.marketplace,
+          isLoggedIn: message.isLoggedIn,
+        });
+        sendResponse({ success: true });
+        break;
+
+      case "SET_AUTH_TOKEN":
+        // Web app providing auth token for session sync
+        const currentSettings =
+          (await chrome.storage.local.get("settings")).settings || {};
+        currentSettings.authToken = message.authToken;
+        currentSettings.apiUrl = message.apiUrl || CONFIG.APP_URLS[0];
+        await chrome.storage.local.set({ settings: currentSettings });
+        console.log("[Session Sync] Auth token saved");
+        sendResponse({ success: true });
         break;
 
       case "START_SESSION_AUTO_SYNC":
@@ -164,7 +221,7 @@ async function handleMessage(message, sender, sendResponse) {
           message.marketplace,
           message.apiUrl,
           message.authToken,
-          message.intervalMinutes
+          message.intervalMinutes,
         );
         sendResponse(autoSyncResult);
         break;
@@ -179,7 +236,7 @@ async function handleMessage(message, sender, sendResponse) {
         // Capture sessions for all marketplaces
         const allSessionsResult = await captureAllSessions(
           message.apiUrl,
-          message.authToken
+          message.authToken,
         );
         sendResponse(allSessionsResult);
         break;
@@ -196,10 +253,31 @@ async function handleMessage(message, sender, sendResponse) {
 // Check if user is logged into marketplaces
 async function checkMarketplaceConnections() {
   const results = {};
+  const { settings = {} } = await chrome.storage.local.get("settings");
 
   for (const [marketplace, config] of Object.entries(CONFIG.MARKETPLACES)) {
     try {
       results[marketplace] = await checkMarketplaceLogin(marketplace);
+
+      // If logged in and we have auth token, auto-sync session to database
+      if (results[marketplace].isLoggedIn && settings.authToken) {
+        console.log(`[Session Sync] Auto-syncing ${marketplace} session...`);
+        captureAndSyncSession(
+          marketplace,
+          settings.apiUrl || CONFIG.APP_URLS[0],
+          settings.authToken,
+        )
+          .then((syncResult) => {
+            console.log(
+              `[Session Sync] ${marketplace} sync result:`,
+              syncResult.success ? "✅" : "❌",
+              syncResult.error || "",
+            );
+          })
+          .catch((err) => {
+            console.error(`[Session Sync] ${marketplace} sync error:`, err);
+          });
+      }
     } catch (error) {
       results[marketplace] = { isLoggedIn: false, error: error.message };
     }
@@ -469,10 +547,10 @@ async function notifyWebApp(eventType, data) {
 async function captureAndSyncSession(marketplace, apiUrl, authToken) {
   try {
     console.log(`[Session Sync] Capturing session for ${marketplace}`);
-    
+
     // Use SessionCapture module
     const sessionData = await SessionCapture.captureSessionData(marketplace);
-    
+
     if (!sessionData.isLoggedIn) {
       return {
         success: false,
@@ -485,11 +563,11 @@ async function captureAndSyncSession(marketplace, apiUrl, authToken) {
     const syncResult = await SessionCapture.syncToBackend(
       sessionData,
       apiUrl,
-      authToken
+      authToken,
     );
 
     console.log(`[Session Sync] ✅ Session synced for ${marketplace}`);
-    
+
     // Update local storage
     await updateLoginStatus(marketplace, true);
 
@@ -516,7 +594,7 @@ async function startAutoSessionSync(
   marketplace,
   apiUrl,
   authToken,
-  intervalMinutes = 30
+  intervalMinutes = 30,
 ) {
   try {
     // Stop existing interval if any
@@ -530,13 +608,13 @@ async function startAutoSessionSync(
       marketplace,
       apiUrl,
       authToken,
-      intervalMinutes
+      intervalMinutes,
     );
 
     sessionRefreshIntervals[marketplace] = intervalId;
 
     console.log(
-      `[Session Sync] Auto-sync started for ${marketplace} (every ${intervalMinutes} min)`
+      `[Session Sync] Auto-sync started for ${marketplace} (every ${intervalMinutes} min)`,
     );
 
     return {
@@ -576,7 +654,7 @@ async function captureAllSessions(apiUrl, authToken) {
     results[marketplace] = await captureAndSyncSession(
       marketplace,
       apiUrl,
-      authToken
+      authToken,
     );
   }
 
@@ -598,7 +676,7 @@ async function initializeSessionMonitoring(apiUrl, authToken) {
       marketplace,
       async (mp, isLoggedIn, sessionData) => {
         console.log(
-          `[Session Monitor] ${mp} login state changed: ${isLoggedIn}`
+          `[Session Monitor] ${mp} login state changed: ${isLoggedIn}`,
         );
 
         if (isLoggedIn) {
@@ -611,7 +689,7 @@ async function initializeSessionMonitoring(apiUrl, authToken) {
           marketplace: mp,
           isLoggedIn,
         });
-      }
+      },
     );
   }
 

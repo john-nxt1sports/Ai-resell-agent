@@ -1,501 +1,390 @@
-# 🚀 Deployment Guide - AI Resell Agent
+# Deployment Guide - AI Resell Agent
 
-This guide covers deploying the AI Resell Agent application to production.
+## Pre-Deployment Checklist
 
-## Table of Contents
+### 1. Environment Setup
 
-- [Prerequisites](#prerequisites)
-- [Environment Setup](#environment-setup)
-- [Deployment Options](#deployment-options)
-  - [Vercel (Recommended)](#vercel-deployment)
-  - [Docker Deployment](#docker-deployment)
-  - [Self-Hosted](#self-hosted-deployment)
-- [Post-Deployment](#post-deployment)
-- [Monitoring](#monitoring)
-- [Troubleshooting](#troubleshooting)
-
-## Prerequisites
-
-Before deploying, ensure you have:
-
-1. **Supabase Account** - [Sign up at supabase.com](https://supabase.com)
-2. **Redis Instance** - [Upstash](https://upstash.com) or [Redis Cloud](https://redis.com/cloud/)
-3. **OpenRouter API Key** - [Get key from openrouter.ai](https://openrouter.ai/keys)
-4. **Domain Name** (optional but recommended)
-
-## Environment Setup
-
-### 1. Create Supabase Project
-
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Run the SQL script in `supabase/setup.sql` in the SQL Editor
-3. Note your project URL and keys:
-   - Project URL: `https://your-project.supabase.co`
-   - Anon Key: `eyJhbG...` (public, safe to expose)
-   - Service Role Key: `eyJhbG...` (SECRET, server-side only)
-
-### 2. Set Up Redis
-
-**Option A: Upstash (Recommended for Serverless)**
-1. Create account at [upstash.com](https://upstash.com)
-2. Create a Redis database
-3. Copy the Redis URL: `redis://default:xxx@xxx.upstash.io:6379`
-
-**Option B: Redis Cloud**
-1. Create account at [redis.com/cloud](https://redis.com/cloud/)
-2. Create a database
-3. Copy connection string
-
-### 3. Get OpenRouter API Key
-
-1. Sign up at [openrouter.ai](https://openrouter.ai)
-2. Go to [Keys](https://openrouter.ai/keys)
-3. Create a new API key
-4. Add credits to your account
-
-## Deployment Options
-
-### Vercel Deployment (Recommended)
-
-Vercel is the easiest way to deploy Next.js applications.
-
-#### Step 1: Prepare Repository
+#### Required Environment Variables
 
 ```bash
-# Ensure all changes are committed
-git add .
-git commit -m "Prepare for deployment"
-git push origin main
-```
-
-#### Step 2: Connect to Vercel
-
-1. Go to [vercel.com](https://vercel.com)
-2. Click "Import Project"
-3. Select your GitHub repository
-4. Configure project settings:
-   - **Framework Preset**: Next.js
-   - **Root Directory**: ./
-   - **Build Command**: `npm run build`
-   - **Output Directory**: Leave default
-
-#### Step 3: Configure Environment Variables
-
-Add the following environment variables in Vercel dashboard:
-
-**Required:**
-```
+# Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# AI Services
 OPENROUTER_API_KEY=your-openrouter-key
+
+# Redis (for job queue)
 REDIS_URL=redis://your-redis-url
-NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
+
+# Security
+ENCRYPTION_KEY=your-64-char-hex-key
+
+# Application
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+NEXT_PUBLIC_APP_NAME=AI Resell Agent
 ```
 
-**Optional but Recommended:**
+#### Generate Encryption Key
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
-LOG_LEVEL=info
-STRUCTURED_LOGGING=true
-RATE_LIMIT_AI_REQUESTS_PER_HOUR=100
-RATE_LIMIT_PUBLIC_REQUESTS_PER_HOUR=1000
-SENTRY_DSN=your-sentry-dsn
+
+### 2. Database Setup
+
+#### Step 1: Create Supabase Project
+
+1. Go to https://supabase.com
+2. Create a new project
+3. Wait for database provisioning (2-3 minutes)
+4. Copy your project URL and API keys
+
+#### Step 2: Run Database Migrations
+
+1. Open Supabase SQL Editor
+2. Run the main setup script: `supabase/setup.sql`
+3. Run the migrations: `supabase/migrations/001_add_marketplace_credentials.sql`
+4. Verify tables were created in Table Editor
+
+#### Step 3: Verify RLS Policies
+
+Check that all policies are active:
+
+```sql
+SELECT schemaname, tablename, policyname 
+FROM pg_policies 
+WHERE schemaname = 'public';
 ```
+
+Should return policies for:
+- profiles
+- listings
+- marketplace_listings
+- marketplace_connections
+- marketplace_credentials
+- analytics
+- ai_generations
+- support_tickets
+
+### 3. Redis Setup (Optional)
+
+#### Option 1: Upstash (Recommended)
+
+1. Go to https://upstash.com
+2. Create a new Redis database
+3. Copy the Redis URL
+4. Add to REDIS_URL environment variable
+
+#### Option 2: Local Redis
+
+```bash
+docker run -d -p 6379:6379 redis:7-alpine
+```
+
+### 4. Vercel Deployment
+
+#### Step 1: Connect Repository
+
+1. Go to https://vercel.com
+2. Import your GitHub repository
+3. Configure project settings
+
+#### Step 2: Configure Environment Variables
+
+Add all required variables in Vercel dashboard:
+- Settings → Environment Variables
+- Add for Production, Preview, and Development
+- Never commit secrets to git
+
+#### Step 3: Configure Build Settings
+
+- Framework Preset: Next.js
+- Build Command: `npm run build`
+- Output Directory: `.next`
+- Install Command: `npm ci`
+- Node Version: 20.x
 
 #### Step 4: Deploy
 
-1. Click "Deploy"
-2. Wait for build to complete (2-5 minutes)
-3. Visit your application URL
-
-#### Step 5: Configure Custom Domain (Optional)
-
-1. Go to Project Settings → Domains
-2. Add your custom domain
-3. Update DNS records as instructed
-4. Update `NEXT_PUBLIC_APP_URL` to your custom domain
-
-### Docker Deployment
-
-Deploy using Docker and Docker Compose.
-
-#### Step 1: Create Environment File
-
 ```bash
-# Create .env file with production values
-cp .env.example .env
-
-# Edit .env with your production values
-nano .env
+# Using Vercel CLI
+npm i -g vercel
+vercel --prod
 ```
 
-#### Step 2: Build and Run
+Or push to main branch for automatic deployment.
 
-```bash
-# Build the Docker image
-docker-compose build
+### 5. Chrome Extension Setup
 
-# Start all services
-docker-compose up -d
+#### Build Extension
 
-# View logs
-docker-compose logs -f app
-```
+The extension is in `browser-extension/` directory.
 
-#### Step 3: Verify Deployment
+#### Update Configuration
 
-```bash
-# Check health endpoint
-curl http://localhost:3000/api/health
+1. Edit `manifest.json`
+2. Remove localhost URLs
+3. Add your production domain to `host_permissions`
+4. Update `externally_connectable` matches
 
-# Check all containers are running
-docker-compose ps
-```
-
-### Self-Hosted Deployment
-
-Deploy on your own server (VPS, AWS EC2, etc.).
-
-#### Step 1: Server Prerequisites
-
-```bash
-# Install Node.js 18+
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Install PM2 for process management
-sudo npm install -g pm2
-
-# Install Nginx for reverse proxy
-sudo apt-get install nginx
-```
-
-#### Step 2: Clone and Install
-
-```bash
-# Clone repository
-git clone https://github.com/your-org/Ai-resell-agent.git
-cd Ai-resell-agent
-
-# Install dependencies
-npm ci --only=production
-
-# Create environment file
-cp .env.example .env
-nano .env  # Edit with your values
-
-# Build application
-npm run build
-```
-
-#### Step 3: Configure PM2
-
-Create `ecosystem.config.js`:
-
-```javascript
-module.exports = {
-  apps: [
-    {
-      name: 'ai-resell-agent',
-      script: 'npm',
-      args: 'start',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 3000,
-      },
-      instances: 2,
-      exec_mode: 'cluster',
-      watch: false,
-      max_memory_restart: '1G',
-    },
-    {
-      name: 'automation-worker',
-      script: 'npm',
-      args: 'run worker',
-      env: {
-        NODE_ENV: 'production',
-      },
-      instances: 1,
-      watch: false,
-    },
+```json
+{
+  "host_permissions": [
+    "https://your-domain.com/*"
   ],
-};
-```
-
-Start with PM2:
-
-```bash
-pm2 start ecosystem.config.js
-pm2 save
-pm2 startup  # Follow instructions to enable auto-start
-```
-
-#### Step 4: Configure Nginx
-
-Create `/etc/nginx/sites-available/ai-resell-agent`:
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
+  "externally_connectable": {
+    "matches": ["https://your-domain.com/*"]
+  }
 }
 ```
 
-Enable site:
+#### Package Extension
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/ai-resell-agent /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
+cd browser-extension
+zip -r ai-resell-agent-extension.zip .
 ```
 
-#### Step 5: Set Up SSL with Let's Encrypt
+#### Submit to Chrome Web Store
+
+1. Go to Chrome Web Store Developer Dashboard
+2. Pay $5 one-time fee
+3. Upload zip file
+4. Fill out store listing details
+5. Submit for review (2-3 days typically)
+
+### 6. Post-Deployment Configuration
+
+#### Enable Monitoring
+
+1. **Error Tracking**: Set up Sentry
+   ```bash
+   npm install @sentry/nextjs
+   npx @sentry/wizard@latest -i nextjs
+   ```
+
+2. **Analytics**: Configure PostHog or Google Analytics
+
+3. **Uptime Monitoring**: Set up UptimeRobot or similar
+
+#### Configure Alerts
+
+Set up alerts for:
+- API error rate > 5%
+- Response time > 2 seconds
+- Database connection failures
+- Redis connection failures
+- High CPU/memory usage
+
+#### Database Backups
+
+1. Enable automatic backups in Supabase
+2. Schedule: Daily at 3 AM UTC
+3. Retention: 30 days
+4. Test restore procedure
+
+### 7. Performance Optimization
+
+#### Enable CDN
+
+1. Vercel automatically provides CDN
+2. Verify assets are served from edge locations
+3. Check response headers for `x-vercel-cache`
+
+#### Image Optimization
+
+Images are automatically optimized by Next.js Image component.
+
+#### Bundle Analysis
 
 ```bash
-# Install Certbot
-sudo apt-get install certbot python3-certbot-nginx
-
-# Get SSL certificate
-sudo certbot --nginx -d your-domain.com
-
-# Auto-renewal is set up automatically
+npm run build
+# Review bundle size in output
 ```
 
-## Post-Deployment
+## Production Health Checks
 
-### 1. Verify Deployment
+### Automated Checks
 
-```bash
-# Check health endpoint
-curl https://your-domain.com/api/health
+Create `/app/api/health/route.ts`:
 
-# Expected response:
-# {"status":"healthy","timestamp":"...","version":"1.0.0","checks":{...}}
+```typescript
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+export async function GET() {
+  const checks = {
+    database: false,
+    redis: false,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    // Check database
+    const supabase = await createClient();
+    const { error } = await supabase.from('profiles').select('count').limit(1);
+    checks.database = !error;
+
+    // Check Redis (if configured)
+    // Add Redis check here if using job queue
+
+    return NextResponse.json({
+      status: checks.database ? 'healthy' : 'degraded',
+      checks,
+    });
+  } catch (error) {
+    return NextResponse.json({
+      status: 'unhealthy',
+      checks,
+      error: 'Health check failed',
+    }, { status: 503 });
+  }
+}
 ```
 
-### 2. Test Authentication
+### Manual Verification
 
-1. Navigate to `/auth/signup`
-2. Create a test account
-3. Verify email confirmation (if enabled)
-4. Log in and test core features
+After deployment, verify:
 
-### 3. Test Chrome Extension
+- [ ] Homepage loads
+- [ ] User can sign up
+- [ ] User can log in
+- [ ] Dashboard displays correctly
+- [ ] New listing form works
+- [ ] Bulk upload functions
+- [ ] Analytics page loads
+- [ ] Settings page functional
+- [ ] Chrome extension connects
+- [ ] API endpoints respond
+- [ ] Images upload successfully
+- [ ] Database queries execute
 
-1. Update extension manifest with production URL
-2. Load extension in Chrome
-3. Test connection to web app
-4. Test listing automation
+## Rollback Procedure
 
-### 4. Configure Supabase Settings
+If issues occur after deployment:
 
-1. **Authentication Settings**:
-   - Add your production URL to allowed redirect URLs
-   - Configure email templates
-   - Set up OAuth providers (Google, GitHub)
+### Vercel Rollback
 
-2. **Storage Settings**:
-   - Review storage bucket policies
-   - Enable CDN for image serving
+1. Go to Vercel Dashboard
+2. Select your project
+3. Go to Deployments
+4. Find previous stable deployment
+5. Click "Promote to Production"
 
-3. **Database Settings**:
-   - Review connection pooling settings
-   - Set up automated backups
+### Database Rollback
 
-## Monitoring
-
-### Health Checks
-
-Set up monitoring for:
-
-```bash
-# Application health
-GET /api/health
-
-# Expected: 200 OK
-# Response: {"status":"healthy",...}
+```sql
+-- If migration causes issues
+-- Restore from backup
+-- Or manually revert changes
 ```
 
-### Logging
+### Emergency Contacts
 
-Configure log aggregation:
+- DevOps Lead: [contact info]
+- Database Admin: [contact info]
+- Security Team: [contact info]
 
-1. **Vercel**: Built-in logging in dashboard
-2. **Self-hosted**: Use PM2 logs or configure external service:
+## Monitoring First 48 Hours
 
-```bash
-# View PM2 logs
-pm2 logs ai-resell-agent
+### Critical Metrics to Watch
 
-# Configure Sentry
-# Add SENTRY_DSN to environment variables
-```
+1. **Error Rate**
+   - Target: < 1%
+   - Alert if: > 5%
 
-### Performance Monitoring
+2. **Response Time**
+   - Target: < 500ms (p95)
+   - Alert if: > 2s
 
-Monitor key metrics:
+3. **User Signups**
+   - Monitor for anomalies
+   - Verify email sending
 
-- Response times (<200ms for API endpoints)
-- Error rates (<1%)
-- Database query times (<100ms)
-- Memory usage
-- CPU usage
+4. **Database Connections**
+   - Target: < 80% pool usage
+   - Alert if: > 90%
 
-### Recommended Tools
+5. **API Usage**
+   - Monitor OpenRouter costs
+   - Check for unusual patterns
 
-- **Uptime Monitoring**: [UptimeRobot](https://uptimerobot.com), [Pingdom](https://pingdom.com)
-- **Error Tracking**: [Sentry](https://sentry.io)
-- **Performance**: [New Relic](https://newrelic.com), [DataDog](https://datadoghq.com)
-- **Analytics**: [Vercel Analytics](https://vercel.com/analytics), [Google Analytics](https://analytics.google.com)
+### Daily Review
+
+- Check error logs
+- Review performance metrics
+- Verify backup completion
+- Check security alerts
+- Monitor cost/usage
 
 ## Troubleshooting
 
 ### Build Failures
 
-**Issue**: Build fails with "Environment variable not found"
-
-**Solution**: Ensure all required environment variables are set:
 ```bash
-# Check which variables are missing
-npm run build 2>&1 | grep "Environment"
-
-# Add missing variables to .env.local or deployment platform
-```
-
-**Issue**: Build fails with "Module not found"
-
-**Solution**:
-```bash
-# Clean install dependencies
-rm -rf node_modules package-lock.json
+# Clear cache and rebuild
+rm -rf .next node_modules
 npm install
+npm run build
 ```
 
-### Runtime Errors
+### Database Connection Issues
 
-**Issue**: "Database connection failed"
+1. Verify SUPABASE_URL is correct
+2. Check API keys are valid
+3. Verify RLS policies
+4. Check connection pool limits
 
-**Solution**:
-1. Verify `NEXT_PUBLIC_SUPABASE_URL` is correct
-2. Check Supabase project is active
-3. Verify RLS policies are set up
-4. Check network connectivity
+### Extension Not Connecting
 
-**Issue**: "Redis connection failed"
-
-**Solution**:
-1. Verify `REDIS_URL` is correct
-2. Check Redis instance is running
-3. Verify network/firewall rules allow connection
-4. Test connection: `redis-cli -u $REDIS_URL ping`
-
-**Issue**: "AI API errors"
-
-**Solution**:
-1. Verify `OPENROUTER_API_KEY` is correct
-2. Check API key has credits
-3. Review rate limits
-4. Check API status: [openrouter.ai/status](https://openrouter.ai/status)
+1. Verify extension ID matches
+2. Check manifest permissions
+3. Review console errors
+4. Verify externally_connectable
 
 ### Performance Issues
 
-**Issue**: Slow page loads
+1. Check bundle size: `npm run build`
+2. Review slow API endpoints
+3. Optimize database queries
+4. Enable caching where appropriate
 
-**Solution**:
-1. Check CDN is enabled for static assets
-2. Review database query performance
-3. Enable Next.js caching
-4. Optimize images (use WebP/AVIF)
-5. Check network latency
+## Security Post-Deployment
 
-**Issue**: High memory usage
+### Immediate Actions
 
-**Solution**:
-1. Increase memory limits (PM2/Docker)
-2. Review memory leaks in custom code
-3. Enable garbage collection logging
-4. Consider horizontal scaling
+1. Enable rate limiting
+2. Configure WAF (if using Cloudflare)
+3. Set up security monitoring
+4. Review access logs
+5. Test authentication flows
 
-### Security Issues
+### Weekly Tasks
 
-**Issue**: "CORS errors"
+- Review security logs
+- Check for dependency updates
+- Monitor failed auth attempts
+- Review API usage patterns
 
-**Solution**:
-1. Add your domain to allowed origins in Supabase dashboard
-2. Update Chrome extension manifest with production URL
-3. Verify `NEXT_PUBLIC_APP_URL` is correct
+### Monthly Tasks
 
-**Issue**: "CSRF token validation failed"
-
-**Solution**:
-1. Ensure cookies are enabled
-2. Check `SameSite` cookie settings
-3. Verify HTTPS is enabled in production
-4. Check time sync on servers
-
-## Rollback Procedure
-
-If deployment fails:
-
-### Vercel
-
-1. Go to Deployments tab
-2. Find last working deployment
-3. Click "Promote to Production"
-
-### Docker
-
-```bash
-# Stop current containers
-docker-compose down
-
-# Check out previous version
-git checkout <previous-commit>
-
-# Rebuild and restart
-docker-compose up -d --build
-```
-
-### PM2
-
-```bash
-# List previous deployments
-pm2 list
-
-# Revert to previous commit
-git checkout <previous-commit>
-npm run build
-pm2 restart all
-```
+- Rotate API keys
+- Review user permissions
+- Update dependencies
+- Security audit
+- Backup verification test
 
 ## Support
 
-For deployment issues:
+For deployment support:
+- Documentation: [your-docs-url]
+- Email: support@[your-domain].com
+- Slack: [your-slack-channel]
 
-1. Check [Troubleshooting](#troubleshooting) section
-2. Review application logs
-3. Check [GitHub Issues](https://github.com/your-org/Ai-resell-agent/issues)
-4. Contact support team
+---
 
-## Next Steps
-
-After successful deployment:
-
-1. ✅ Set up monitoring and alerting
-2. ✅ Configure automated backups
-3. ✅ Set up CI/CD pipeline
-4. ✅ Review and optimize performance
-5. ✅ Plan scaling strategy
-6. ✅ Document operational procedures
+**Version**: 1.0.0  
+**Last Updated**: 2026-01-20  
+**Next Review**: 2026-02-20
