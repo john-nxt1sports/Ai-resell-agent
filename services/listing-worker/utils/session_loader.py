@@ -21,11 +21,12 @@ class SessionLoader:
     """
     
     def __init__(self):
-        supabase_url = os.getenv('SUPABASE_URL')
+        # Support both SUPABASE_URL and NEXT_PUBLIC_SUPABASE_URL for flexibility
+        supabase_url = os.getenv('SUPABASE_URL') or os.getenv('NEXT_PUBLIC_SUPABASE_URL')
         supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
         
         if not supabase_url or not supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required")
+            raise ValueError("SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY required")
         
         self.supabase: Client = create_client(supabase_url, supabase_key)
     
