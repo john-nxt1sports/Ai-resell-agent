@@ -12,8 +12,8 @@
       }
 
       body {
-        width: 360px;
-        min-height: 400px;
+        width: 520px;
+        min-height: 700px;
         font-family:
           -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
           sans-serif;
@@ -22,15 +22,14 @@
       }
 
       .header {
-        padding: 20px;
-        text-align: center;
+        padding: 20px 20px 16px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       }
 
       .logo {
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
         gap: 10px;
         margin-bottom: 8px;
       }
@@ -57,7 +56,7 @@
       .status-indicator {
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
         gap: 6px;
         font-size: 12px;
         color: rgba(255, 255, 255, 0.7);
@@ -74,8 +73,48 @@
         background: #ef4444;
       }
 
+      .view-scroller {
+        margin-top: 14px;
+        display: flex;
+        overflow-x: auto;
+        gap: 8px;
+        padding-bottom: 2px;
+        scrollbar-width: thin;
+      }
+
+      .view-chip {
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.82);
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.2s;
+      }
+
+      .view-chip.active {
+        border-color: rgba(99, 102, 241, 0.6);
+        background: linear-gradient(
+          135deg,
+          rgba(99, 102, 241, 0.22),
+          rgba(139, 92, 246, 0.22)
+        );
+        color: #fff;
+      }
+
       .content {
-        padding: 16px;
+        padding: 18px;
+      }
+
+      .panel {
+        display: none;
+      }
+
+      .panel.active {
+        display: block;
       }
 
       .section {
@@ -169,6 +208,11 @@
       }
 
       .status-badge.checking {
+        background: rgba(234, 179, 8, 0.2);
+        color: #eab308;
+      }
+
+      .status-badge.processing {
         background: rgba(234, 179, 8, 0.2);
         color: #eab308;
       }
@@ -313,6 +357,185 @@
         text-decoration: underline;
         cursor: pointer;
       }
+
+      .wizard-shell {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 14px;
+      }
+
+      .wizard-steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .step-pill {
+        border-radius: 9px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.04);
+        padding: 9px;
+        font-size: 11px;
+        line-height: 1.2;
+      }
+
+      .step-pill.active {
+        border-color: rgba(99, 102, 241, 0.65);
+        background: rgba(99, 102, 241, 0.2);
+      }
+
+      .step-pill.complete {
+        border-color: rgba(34, 197, 94, 0.5);
+        background: rgba(34, 197, 94, 0.15);
+      }
+
+      .step-pill strong {
+        display: block;
+        color: #fff;
+        margin-bottom: 4px;
+      }
+
+      .step-pill span {
+        color: rgba(255, 255, 255, 0.65);
+      }
+
+      .wizard-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 12px;
+      }
+
+      .wizard-label {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+
+      .wizard-helper {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.6);
+        margin-bottom: 10px;
+      }
+
+      .dropzone {
+        border: 1.5px dashed rgba(255, 255, 255, 0.25);
+        border-radius: 10px;
+        min-height: 116px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .dropzone.dragging {
+        border-color: #6366f1;
+        background: rgba(99, 102, 241, 0.12);
+      }
+
+      .preview-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .preview-item {
+        position: relative;
+        border-radius: 8px;
+        overflow: hidden;
+        aspect-ratio: 1/1;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .preview-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .preview-remove {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        border: none;
+        border-radius: 999px;
+        width: 20px;
+        height: 20px;
+        background: rgba(0, 0, 0, 0.65);
+        color: #fff;
+        cursor: pointer;
+      }
+
+      .field-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .input,
+      .textarea {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.06);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 12px;
+        outline: none;
+      }
+
+      .input::placeholder,
+      .textarea::placeholder {
+        color: rgba(255, 255, 255, 0.45);
+      }
+
+      .textarea {
+        min-height: 95px;
+        resize: vertical;
+      }
+
+      .wizard-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .wizard-actions .btn {
+        flex: 1;
+      }
+
+      .summary {
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        background: rgba(255, 255, 255, 0.04);
+        padding: 10px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.75);
+        margin: 10px 0;
+      }
+
+      .step-status {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #22c55e;
+        display: none;
+      }
+
+      .step-status.show {
+        display: block;
+      }
+
+      .full-width {
+        width: 100%;
+      }
     </style>
   </head>
   <body>
@@ -325,36 +548,184 @@
         <div class="status-dot" id="connectionDot"></div>
         <span id="connectionStatus">Checking connection...</span>
       </div>
+
+      <div class="view-scroller" id="viewScroller">
+        <button class="view-chip active" data-view="connections">
+          Marketplace Connections
+        </button>
+        <button class="view-chip" data-view="new-listing">
+          New AI Listing
+        </button>
+      </div>
     </div>
 
     <div class="content">
-      <div class="section">
-        <div class="section-title">Marketplace Connections</div>
-        <div class="marketplace-list" id="marketplaceList">
-          <!-- Populated by JavaScript -->
+      <div class="panel active" id="panel-connections">
+        <div class="section">
+          <div class="section-title">Marketplace Connections</div>
+          <div class="marketplace-list" id="marketplaceList">
+            <!-- Populated by JavaScript -->
+          </div>
+          <div class="login-prompt" id="loginPrompt" style="display: none">
+            💡 Log into your marketplace accounts in their tabs, then click
+            "Refresh" to update status
+          </div>
         </div>
-        <div class="login-prompt" id="loginPrompt" style="display: none">
-          💡 Log into your marketplace accounts in their tabs, then click
-          "Refresh" to update status
+
+        <div class="section">
+          <div class="section-title">Pending Jobs</div>
+          <div class="jobs-section">
+            <div class="jobs-header">
+              <div>
+                <span class="jobs-count" id="pendingCount">0</span>
+                <span style="font-size: 12px; color: rgba(255, 255, 255, 0.5)">
+                  listings queued</span
+                >
+              </div>
+              <button class="btn btn-primary btn-sm" id="processBtn" disabled>
+                Start Posting
+              </button>
+            </div>
+            <div class="job-list" id="jobList">
+              <div class="empty-state">No pending jobs</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="section">
-        <div class="section-title">Pending Jobs</div>
-        <div class="jobs-section">
-          <div class="jobs-header">
-            <div>
-              <span class="jobs-count" id="pendingCount">0</span>
-              <span style="font-size: 12px; color: rgba(255, 255, 255, 0.5)">
-                listings queued</span
-              >
+      <div class="panel" id="panel-new-listing">
+        <div class="section">
+          <div class="section-title">Three-Step AI Listing Workflow</div>
+
+          <div class="wizard-shell">
+            <div class="wizard-steps">
+              <div class="step-pill active" id="pill-step-1">
+                <strong>Step 1</strong>
+                <span>Upload images</span>
+              </div>
+              <div class="step-pill" id="pill-step-2">
+                <strong>Step 2</strong>
+                <span>Add product info</span>
+              </div>
+              <div class="step-pill" id="pill-step-3">
+                <strong>Step 3</strong>
+                <span>Run AI + publish</span>
+              </div>
             </div>
-            <button class="btn btn-primary btn-sm" id="processBtn" disabled>
-              Start Posting
-            </button>
-          </div>
-          <div class="job-list" id="jobList">
-            <div class="empty-state">No pending jobs</div>
+
+            <div class="wizard-card" id="wizardStep1">
+              <div class="wizard-label">Step 1 — Add product images</div>
+              <div class="wizard-helper">
+                Drop up to 10 images. These are passed into your full
+                `/listings/new` AI workflow.
+              </div>
+
+              <input
+                id="wizardImageInput"
+                type="file"
+                accept="image/*,.heic,.heif"
+                multiple
+                style="display: none"
+              />
+
+              <div class="dropzone" id="wizardDropzone">
+                <div>
+                  <div style="font-weight: 600; margin-bottom: 5px">
+                    Drop images here or click to upload
+                  </div>
+                  <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6)">
+                    JPG, PNG, WEBP, HEIC
+                  </div>
+                </div>
+              </div>
+
+              <div class="preview-row" id="wizardPreviewRow"></div>
+
+              <div class="wizard-actions">
+                <button class="btn btn-primary" id="confirmStep1Btn" disabled>
+                  Confirm Step 1 Complete
+                </button>
+              </div>
+              <div class="step-status" id="step1Status">✓ Step 1 confirmed</div>
+            </div>
+
+            <div
+              class="wizard-card"
+              id="wizardStep2"
+              style="margin-top: 10px; opacity: 0.45; pointer-events: none"
+            >
+              <div class="wizard-label">Step 2 — Add what you know</div>
+              <div class="wizard-helper">
+                Include any known product details for stronger AI research
+                (size, brand, model, notes).
+              </div>
+
+              <div class="field-grid">
+                <input
+                  class="input"
+                  id="productNameInput"
+                  placeholder="Product name (optional)"
+                />
+                <input
+                  class="input"
+                  id="brandInput"
+                  placeholder="Brand (optional)"
+                />
+                <input
+                  class="input"
+                  id="sizeInput"
+                  placeholder="Size (optional)"
+                />
+                <input
+                  class="input"
+                  id="categoryInput"
+                  placeholder="Category (optional)"
+                />
+              </div>
+              <textarea
+                class="textarea"
+                id="productInfoInput"
+                placeholder="Any extra details (condition notes, flaws, measurements, colorway, receipt info, etc.)"
+              ></textarea>
+
+              <div class="wizard-actions">
+                <button class="btn btn-primary" id="confirmStep2Btn">
+                  Confirm Step 2 Complete
+                </button>
+              </div>
+              <div class="step-status" id="step2Status">✓ Step 2 confirmed</div>
+            </div>
+
+            <div
+              class="wizard-card"
+              id="wizardStep3"
+              style="margin-top: 10px; opacity: 0.45; pointer-events: none"
+            >
+              <div class="wizard-label">Step 3 — AI listing + publish</div>
+              <div class="wizard-helper">
+                This opens your full AI listing studio and runs the exact
+                existing `/listings/new` flow, including image ordering, AI
+                content generation, and publish/post controls.
+              </div>
+
+              <div class="summary" id="wizardSummary">
+                Complete Steps 1 and 2 to launch with your prepared draft.
+              </div>
+
+              <button
+                class="btn btn-primary full-width"
+                id="launchListingStudioBtn"
+                disabled
+              >
+                Launch AI Listing Studio
+              </button>
+
+              <div style="margin-top: 8px; text-align: center">
+                <button class="btn btn-outline btn-sm" id="resetWizardBtn">
+                  Reset Draft
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -371,6 +742,7 @@
       </div>
     </div>
 
+    <script src="lib/heic-utils.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

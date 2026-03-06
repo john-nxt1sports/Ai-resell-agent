@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useState, useId } from "react";
+import { useCallback, useState, useRef, useId } from "react";
 import { Upload, X, Image as ImageIcon, Crop, Loader2 } from "lucide-react";
 import type { UploadedImage } from "@/types";
 import type { AspectRatio, CropResult } from "@/lib/image-cropper";
 import { useImageCropper } from "@/hooks/useImageCropper";
 import { ImageCropperModal } from "./ImageCropperModal";
 import { revokeImageUrl } from "@/lib/image-cropper";
+import { isHeicFile } from "@/lib/heic-converter";
 import Image from "next/image";
 
 // ============================================================================
@@ -33,7 +34,7 @@ interface FileUploaderProps {
 // ============================================================================
 
 const DEFAULT_MAX_IMAGES = 10;
-const DEFAULT_ACCEPT = "image/*";
+const DEFAULT_ACCEPT = "image/*,.heic,.heif";
 
 // ============================================================================
 // Component
@@ -54,6 +55,13 @@ export function FileUploader({
   const [isDragging, setIsDragging] = useState(false);
   const [editingImage, setEditingImage] = useState<UploadedImage | null>(null);
 
+  // Use ref to always have current images for async callbacks
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
+
+  // Counter to fix dragLeave firing when moving between child elements
+  const dragCounter = useRef(0);
+
   // Image cropper hook
   const { processFiles, isCropping, cropProgress } = useImageCropper({
     aspectRatio,
@@ -67,30 +75,38 @@ export function FileUploader({
   // ============================================================================
 
   /**
-   * Process uploaded files and add to images array
+   * Process uploaded files and add to images array.
+   * Uses ref to read current images count to avoid stale closure issues
+   * when dropping files while a previous batch is still processing.
    */
   const handleFiles = useCallback(
     async (files: FileList | null) => {
       if (!files || files.length === 0) return;
 
-      // Check remaining capacity
-      const remainingSlots = maxImages - images.length;
+      // Use ref for current count to avoid stale closure
+      const remainingSlots = maxImages - imagesRef.current.length;
       if (remainingSlots <= 0) return;
 
       // Convert to array and limit to remaining slots
+      // Accept standard image types + HEIC/HEIF (iOS) which may have empty MIME type
       const fileArray = Array.from(files)
-        .filter((file) => file.type.startsWith("image/"))
+        .filter((file) => file.type.startsWith("image/") || isHeicFile(file))
         .slice(0, remainingSlots);
 
       if (fileArray.length === 0) return;
 
-      const processedImages = await processFiles(fileArray);
+      try {
+        const processedImages = await processFiles(fileArray);
 
-      if (processedImages.length > 0) {
-        onImagesChange([...images, ...processedImages]);
+        if (processedImages.length > 0) {
+          // Use ref to get latest images state (avoids stale closure)
+          onImagesChange([...imagesRef.current, ...processedImages]);
+        }
+      } catch (error) {
+        console.error("[FileUploader] Failed to process files:", error);
       }
     },
-    [images, maxImages, onImagesChange, processFiles],
+    [maxImages, onImagesChange, processFiles],
   );
 
   /**
@@ -100,6 +116,7 @@ export function FileUploader({
     (e: React.DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      dragCounter.current = 0;
       setIsDragging(false);
       handleFiles(e.dataTransfer.files);
     },
@@ -109,13 +126,23 @@ export function FileUploader({
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
     setIsDragging(true);
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
   }, []);
 
   /**
@@ -171,8 +198,9 @@ export function FileUploader({
   // Computed values
   // ============================================================================
 
-  const canAddMore = images.length < maxImages && !isCropping;
-  const isDisabled = isCropping;
+  const canAddMore = images.length < maxImages;
+  // Only disable the file input during cropping, NOT the drop zone
+  const isInputDisabled = isCropping;
 
   // ============================================================================
   // Render
@@ -214,12 +242,12 @@ export function FileUploader({
         </div>
       )}
 
-      {/* Drop Zone */}
+      {/* Drop Zone - always accepts drops, even during processing */}
       <div
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        onDragEnter={handleDragOver}
+        onDragEnter={handleDragEnter}
         className={`
           relative border-2 rounded-lg p-8 transition-all duration-200
           ${
@@ -227,7 +255,6 @@ export function FileUploader({
               ? "border-primary-500 bg-primary-50 dark:bg-primary-900/10 scale-[1.01]"
               : "border-dark-300 dark:border-dark-700"
           }
-          ${isDisabled ? "opacity-50 pointer-events-none" : ""}
         `}
       >
         <input
@@ -237,7 +264,7 @@ export function FileUploader({
           accept={accept}
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
-          disabled={isDisabled}
+          disabled={isInputDisabled}
           aria-describedby={`${inputId}-description`}
         />
 
@@ -258,8 +285,8 @@ export function FileUploader({
             id={`${inputId}-description`}
             className="text-sm text-dark-600 dark:text-dark-400"
           >
-            Supports: JPG, PNG, WEBP (max {maxImages} images) • Auto-cropped to
-            square
+            Supports: JPG, PNG, WEBP, HEIC (max {maxImages} images) •
+            Auto-cropped to square
           </p>
         </label>
       </div>
@@ -284,6 +311,7 @@ export function FileUploader({
                 loading="lazy"
                 width={200}
                 height={200}
+                unoptimized
               />
 
               {/* Hover Actions */}

@@ -141,6 +141,27 @@ window.addEventListener("message", async (event) => {
           "*",
         );
         break;
+
+      case "AI_RESELL_AGENT_GET_DRAFT":
+        // Read prepared listing draft from extension storage
+        const { extensionListingDraft = null } = await chrome.storage.local.get(
+          "extensionListingDraft",
+        );
+
+        window.postMessage(
+          {
+            type: "AI_RESELL_AGENT_DRAFT_DATA",
+            success: true,
+            draft: extensionListingDraft,
+          },
+          "*",
+        );
+
+        // Optional one-time consume behavior
+        if (data.consume === true) {
+          await chrome.storage.local.remove(["extensionListingDraft"]);
+        }
+        break;
     }
   } catch (error) {
     console.error("[AI Resell Agent] Error handling message:", error);
@@ -162,8 +183,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     message.type === "LISTING_FAILED"
   ) {
     window.postMessage(message, "*");
+    sendResponse({ received: true });
+    return true;
   }
-  sendResponse({ received: true });
+  return false;
 });
 
 // Announce presence to page

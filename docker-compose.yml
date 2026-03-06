@@ -4,7 +4,7 @@
 # For local development and testing
 # ==============================================================================
 
-version: '3.8'
+version: "3.8"
 
 services:
   # Main application
@@ -22,18 +22,18 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
       - NEXT_PUBLIC_APP_NAME=AI Resell Agent
-      
+
       # Supabase (set these in .env file)
       - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      
+
       # AI Services
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      
+
       # Redis connection
       - REDIS_URL=redis://redis:6379
-      
+
       # Logging
       - LOG_LEVEL=info
       - STRUCTURED_LOGGING=true
@@ -79,15 +79,15 @@ services:
       # Application
       - NODE_ENV=production
       - WORKER_PORT=3001
-      
+
       # Supabase (set these in .env file)
       - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      
+
       # Redis connection
       - REDIS_URL=redis://redis:6379
-      
+
       # Logging
       - LOG_LEVEL=info
       - STRUCTURED_LOGGING=true

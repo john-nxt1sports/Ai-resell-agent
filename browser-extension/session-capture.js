@@ -114,7 +114,8 @@ const SessionCapture = {
       poshmark: ["_poshmark_session", "user_id", "auth_token"],
       ebay: ["s", "nonsession", "dp1"],
       mercari: ["_mercari_session", "oauth_token"],
-      flyp: ["_flyp_session", "auth_token", "flyp_user"],
+      flyp: ["_flyp_session", "auth_token", "flyp_user", "session", "token"],
+      depop: ["_depop_session", "auth_token", "depop_user", "session"],
     };
 
     const patterns = authCookiePatterns[marketplace] || [];

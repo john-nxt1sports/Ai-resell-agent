@@ -12,7 +12,7 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import { createClient } from "@/services/supabase/client";
-import { updatePassword, deleteAccount } from "@/lib/auth";
+import { updatePassword, deleteAccount, signOut } from "@/lib/auth";
 import { ManagePlanModal } from "@/components/ui/ManagePlanModal";
 import { DeleteAccountModal } from "@/components/ui/DeleteAccountModal";
 import { ExtensionMarketplaceConnections } from "@/components/settings/ExtensionMarketplaceConnections";
@@ -42,6 +42,8 @@ export function Settings() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState("");
+  const [signOutError, setSignOutError] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
 
   const [notifications, setNotifications] = useState({
     email: true,
@@ -162,6 +164,29 @@ export function Settings() {
 
     // Redirect to home page after successful deletion
     router.push("/");
+  }
+
+  async function handleSignOut() {
+    setSignOutError("");
+    setSigningOut(true);
+
+    try {
+      const { error } = await signOut();
+
+      if (error) {
+        throw new Error(error.message || "Failed to sign out");
+      }
+
+      router.push("/auth/login");
+      router.refresh();
+    } catch (error: unknown) {
+      setSignOutError(
+        (error instanceof Error ? error.message : String(error)) ||
+          "Failed to sign out",
+      );
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   if (loading) {
@@ -464,6 +489,28 @@ export function Settings() {
         </div>
 
         <div className="space-y-4">
+          {signOutError && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
+              {signOutError}
+            </div>
+          )}
+
+          <div>
+            <h3 className="font-medium text-dark-900 dark:text-dark-50 mb-2">
+              Log Out
+            </h3>
+            <p className="text-sm text-dark-600 dark:text-dark-400 mb-4">
+              Sign out of your account on this device.
+            </p>
+            <button
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="px-6 py-2 bg-dark-100 dark:bg-dark-800 hover:bg-dark-200 dark:hover:bg-dark-700 text-dark-900 dark:text-dark-50 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {signingOut ? "Signing Out..." : "Log Out"}
+            </button>
+          </div>
+
           <div>
             <h3 className="font-medium text-dark-900 dark:text-dark-50 mb-2">
               Delete Account

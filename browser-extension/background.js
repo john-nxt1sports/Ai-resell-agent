@@ -32,6 +32,18 @@ const CONFIG = {
       loginUrl: "https://signin.ebay.com/signin",
       checkLoggedIn: "https://www.ebay.com/mys/home",
     },
+    flyp: {
+      baseUrl: "https://tools.joinflyp.com",
+      createListingUrl: "https://tools.joinflyp.com/crosslist",
+      loginUrl: "https://tools.joinflyp.com",
+      checkLoggedIn: "https://tools.joinflyp.com/crosslist",
+    },
+    depop: {
+      baseUrl: "https://www.depop.com",
+      createListingUrl: "https://www.depop.com/products/create",
+      loginUrl: "https://www.depop.com/login",
+      checkLoggedIn: "https://www.depop.com/products/create",
+    },
   },
 };
 
@@ -69,6 +81,12 @@ chrome.runtime.onMessageExternal.addListener(
 
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Messages intended for offscreen document should not be handled here.
+  // If background responds first, it can race and break HEIC conversion.
+  if (message?.type === "CONVERT_HEIC_OFFSCREEN") {
+    return false;
+  }
+
   console.log("[AI Resell Agent] Internal message received:", message.type);
 
   handleMessage(message, sender, sendResponse);
@@ -241,12 +259,81 @@ async function handleMessage(message, sender, sendResponse) {
         sendResponse(allSessionsResult);
         break;
 
+      case "CONVERT_HEIC":
+        // Delegate HEIC→JPEG conversion to the offscreen document
+        // (popup CSP blocks Web Workers needed by heic2any)
+        const heicResult = await convertHeicViaOffscreen(
+          message.arrayBuffer,
+          message.fileName,
+          message.quality,
+        );
+        sendResponse(heicResult);
+        break;
+
       default:
         sendResponse({ success: false, error: "Unknown message type" });
     }
   } catch (error) {
     console.error("[AI Resell Agent] Error handling message:", error);
     sendResponse({ success: false, error: error.message });
+  }
+}
+
+// ============================================================================
+// HEIC Conversion via Offscreen Document
+// ============================================================================
+
+let offscreenCreating = null; // guard against parallel creation
+
+/**
+ * Ensure the offscreen document exists.  Chrome allows only one offscreen
+ * document per extension; we keep it alive until the service-worker idles.
+ */
+async function ensureOffscreenDocument() {
+  // Check if already exists
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ["OFFSCREEN_DOCUMENT"],
+    documentUrls: [chrome.runtime.getURL("offscreen.html")],
+  });
+  if (existingContexts.length > 0) return;
+
+  // Guard against concurrent creation attempts
+  if (offscreenCreating) {
+    await offscreenCreating;
+    return;
+  }
+
+  offscreenCreating = chrome.offscreen.createDocument({
+    url: "offscreen.html",
+    reasons: ["BLOBS"],
+    justification: "HEIC→JPEG conversion requires Web Workers (heic2any library)",
+  });
+
+  await offscreenCreating;
+  offscreenCreating = null;
+}
+
+/**
+ * Convert a HEIC file to JPEG via the offscreen document.
+ *
+ * @param {number[]} arrayBuffer - HEIC file bytes as a plain array
+ * @param {string}   fileName    - Original filename
+ * @param {number}   [quality]   - JPEG quality 0–1
+ * @returns {Promise<{ success: boolean, jpegArrayBuffer?: number[], fileName?: string, error?: string }>}
+ */
+async function convertHeicViaOffscreen(arrayBuffer, fileName, quality) {
+  try {
+    await ensureOffscreenDocument();
+    const response = await chrome.runtime.sendMessage({
+      type: "CONVERT_HEIC_OFFSCREEN",
+      arrayBuffer,
+      fileName,
+      quality: quality ?? 0.92,
+    });
+    return response;
+  } catch (err) {
+    console.error("[Background] HEIC offscreen conversion failed:", err);
+    return { success: false, error: String(err) };
   }
 }
 

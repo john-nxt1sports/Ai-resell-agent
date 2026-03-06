@@ -3,6 +3,7 @@
  * Handles image uploads to Supabase Storage with production-ready features:
  * - File validation (type, size)
  * - Image optimization
+ * - HEIC/HEIF automatic conversion
  * - Error handling
  * - Progress tracking
  * - Retry logic
@@ -10,6 +11,7 @@
 
 import { createClient } from "@/services/supabase/client";
 import imageCompression from "browser-image-compression";
+import { isHeicFile, convertHeicIfNeeded } from "./heic-converter";
 
 const BUCKET_NAME = "listing-images";
 
@@ -17,11 +19,16 @@ const BUCKET_NAME = "listing-images";
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = [
   "image/jpeg",
-  "image/jpg",
   "image/png",
   "image/webp",
   "image/gif",
+  // HEIC/HEIF support (iOS) - auto-converted to JPEG
+  "image/heic",
+  "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
 ];
+
 const COMPRESSION_OPTIONS = {
   maxSizeMB: 1.5,
   maxWidthOrHeight: 1920,
@@ -55,11 +62,26 @@ export class StorageError extends Error {
 }
 
 /**
+ * Check if file type is allowed (including HEIC by extension for iOS quirks)
+ */
+function isAllowedFileType(file: File): boolean {
+  // Check MIME type
+  if (ALLOWED_TYPES.includes(file.type)) {
+    return true;
+  }
+  // iOS sometimes sends HEIC with empty/generic MIME type - check extension
+  if (isHeicFile(file)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Validate file before upload
  */
 function validateFile(file: File): void {
-  // Check file type
-  if (!ALLOWED_TYPES.includes(file.type)) {
+  // Check file type (including HEIC detection by extension)
+  if (!isAllowedFileType(file)) {
     throw new StorageError(
       `Invalid file type: ${file.type}. Allowed types: ${ALLOWED_TYPES.join(
         ", ",
@@ -99,18 +121,6 @@ async function compressImage(file: File): Promise<File> {
     }
 
     const compressedFile = await imageCompression(file, COMPRESSION_OPTIONS);
-
-    console.log(`Image compressed: ${file.name}`);
-    console.log(`Original size: ${(file.size / 1024).toFixed(2)}KB`);
-    console.log(
-      `Compressed size: ${(compressedFile.size / 1024).toFixed(2)}KB`,
-    );
-    console.log(
-      `Reduction: ${(
-        ((file.size - compressedFile.size) / file.size) *
-        100
-      ).toFixed(2)}%`,
-    );
 
     return compressedFile;
   } catch (error) {
@@ -154,15 +164,42 @@ export async function uploadImage(
     // Validate file
     validateFile(file);
 
+    // Convert HEIC/HEIF to JPEG if needed (iOS images)
+    let processedFile = file;
+    if (isHeicFile(file)) {
+      onProgress?.({
+        fileName: file.name,
+        progress: 0,
+        status: "compressing",
+      });
+      const conversionResult = await convertHeicIfNeeded(file);
+      processedFile = conversionResult.file;
+
+      // Re-validate size after conversion (JPEG is typically larger than HEIC)
+      if (processedFile.size > MAX_FILE_SIZE) {
+        throw new StorageError(
+          `Converted file too large: ${(processedFile.size / 1024 / 1024).toFixed(2)}MB. Maximum: ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+          "FILE_TOO_LARGE",
+          {
+            fileSize: processedFile.size,
+            maxSize: MAX_FILE_SIZE,
+            fileName: processedFile.name,
+          },
+        );
+      }
+    }
+
     // Report compression start
     onProgress?.({
       fileName: file.name,
-      progress: 0,
+      progress: 10,
       status: "compressing",
     });
 
     // Compress image if enabled
-    const fileToUpload = compress ? await compressImage(file) : file;
+    const fileToUpload = compress
+      ? await compressImage(processedFile)
+      : processedFile;
 
     // Report upload start
     onProgress?.({
@@ -172,7 +209,7 @@ export async function uploadImage(
     });
 
     const supabase = createClient();
-    const fileName = generateFileName(file, userId);
+    const fileName = generateFileName(processedFile, userId);
 
     // Attempt upload with retry logic
     let lastError: unknown;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   autoCropImage,
   type AspectRatio,
@@ -9,6 +9,7 @@ import {
   DEFAULT_MAX_SIZE,
   DEFAULT_QUALITY,
 } from "@/lib/image-cropper";
+import { isHeicFile } from "@/lib/heic-converter";
 import type { UploadedImage } from "@/types";
 
 // ============================================================================
@@ -52,9 +53,9 @@ const generateId = (): string => {
   return `img_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 };
 
-/** Check if a file is an image */
+/** Check if a file is an image (including HEIC/HEIF with missing MIME type) */
 const isImageFile = (file: File): boolean => {
-  return file.type.startsWith("image/");
+  return file.type.startsWith("image/") || isHeicFile(file);
 };
 
 // ============================================================================
@@ -91,22 +92,37 @@ export function useImageCropper(
     onError,
   } = options;
 
-  const [isCropping, setIsCropping] = useState(false);
+  const [activeBatches, setActiveBatches] = useState(0);
   const [cropProgress, setCropProgress] = useState(0);
+
+  // Derived: cropping if any batch is active
+  const isCropping = activeBatches > 0;
 
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Track total progress across concurrent batches
+  const progressRef = useRef({ completed: 0, total: 0 });
 
   // Store options in ref to avoid stale closures
   const optionsRef = useRef<CropOptions>({ maxSize, quality });
   optionsRef.current = { maxSize, quality };
 
   /**
-   * Process a single file and return an UploadedImage
+   * Process a single file and return an UploadedImage.
+   * HEIC/HEIF conversion is handled internally by loadImage() in image-cropper,
+   * so we don't convert here to avoid double processing.
    */
   const processFile = useCallback(
     async (file: File): Promise<UploadedImage> => {
       if (autoCrop) {
+        // autoCropImage → loadImage handles HEIC conversion internally
         const result = await autoCropImage(
           file,
           aspectRatio,
@@ -120,11 +136,18 @@ export function useImageCropper(
         };
       }
 
-      // No auto-crop - just create preview
-      const preview = URL.createObjectURL(file);
+      // No auto-crop — convert HEIC if needed, then create preview
+      let processedFile = file;
+      if (isHeicFile(file)) {
+        const { convertHeicIfNeeded } = await import("@/lib/heic-converter");
+        const conversionResult = await convertHeicIfNeeded(file);
+        processedFile = conversionResult.file;
+      }
+
+      const preview = URL.createObjectURL(processedFile);
       return {
         id: generateId(),
-        file,
+        file: processedFile,
         preview,
         compressed: false,
       };
@@ -133,20 +156,22 @@ export function useImageCropper(
   );
 
   /**
-   * Process multiple files with progress tracking
+   * Process multiple files with progress tracking.
+   * Supports concurrent batches — dropping more files while processing
+   * adds them to the progress tracker without blocking.
    */
   const processFiles = useCallback(
     async (files: File[]): Promise<UploadedImage[]> => {
-      // Filter to only image files
+      // Filter to only image files (including HEIC)
       const imageFiles = files.filter(isImageFile);
 
       if (imageFiles.length === 0) {
         return [];
       }
 
-      // Update state
-      setIsCropping(true);
-      setCropProgress(0);
+      // Register this batch
+      setActiveBatches((prev) => prev + 1);
+      progressRef.current.total += imageFiles.length;
       onProcessingStart?.();
 
       const processedImages: UploadedImage[] = [];
@@ -166,19 +191,28 @@ export function useImageCropper(
               error,
             );
 
-            // Fallback: use original file without cropping
-            const preview = URL.createObjectURL(imageFiles[i]);
-            processedImages.push({
-              id: generateId(),
-              file: imageFiles[i],
-              preview,
-              compressed: false,
-            });
+            // Fallback: use file without cropping (skip re-attempting HEIC conversion if it already failed)
+            try {
+              const preview = URL.createObjectURL(imageFiles[i]);
+              processedImages.push({
+                id: generateId(),
+                file: imageFiles[i],
+                preview,
+                compressed: false,
+              });
+            } catch {
+              // If even creating an objectURL fails, skip this file entirely
+              console.error(
+                `Skipping unprocessable file: ${imageFiles[i].name}`,
+              );
+            }
           }
 
-          // Update progress
+          // Update global progress across all concurrent batches
           if (isMountedRef.current) {
-            setCropProgress(Math.round(((i + 1) / imageFiles.length) * 100));
+            progressRef.current.completed += 1;
+            const { completed, total } = progressRef.current;
+            setCropProgress(Math.round((completed / total) * 100));
           }
         }
 
@@ -191,8 +225,15 @@ export function useImageCropper(
         throw err;
       } finally {
         if (isMountedRef.current) {
-          setIsCropping(false);
-          setCropProgress(0);
+          setActiveBatches((prev) => {
+            const next = prev - 1;
+            // Reset progress when all batches complete
+            if (next === 0) {
+              progressRef.current = { completed: 0, total: 0 };
+              setCropProgress(0);
+            }
+            return next;
+          });
         }
       }
     },
@@ -203,8 +244,9 @@ export function useImageCropper(
    * Reset the cropper state
    */
   const reset = useCallback(() => {
-    setIsCropping(false);
+    setActiveBatches(0);
     setCropProgress(0);
+    progressRef.current = { completed: 0, total: 0 };
   }, []);
 
   return {

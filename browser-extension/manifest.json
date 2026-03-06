@@ -15,7 +15,8 @@
     "activeTab",
     "scripting",
     "notifications",
-    "cookies"
+    "cookies",
+    "offscreen"
   ],
   "host_permissions": [
     "https://ai-resell-agent-production.up.railway.app/*",
@@ -27,7 +28,9 @@
     "https://ebay.com/*",
     "https://www.ebay.com/*",
     "https://tools.joinflyp.com/*",
-    "https://joinflyp.com/*"
+    "https://joinflyp.com/*",
+    "https://www.depop.com/*",
+    "https://depop.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -54,6 +57,16 @@
     {
       "matches": ["https://ebay.com/*", "https://www.ebay.com/*"],
       "js": ["session-capture.js", "content-scripts/ebay.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://tools.joinflyp.com/*", "https://joinflyp.com/*"],
+      "js": ["session-capture.js", "content-scripts/flyp.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.depop.com/*", "https://depop.com/*"],
+      "js": ["session-capture.js", "content-scripts/depop.js"],
       "run_at": "document_idle"
     }
   ],

@@ -1167,7 +1167,7 @@ const MessageHandler = {
     if (handler) {
       handler();
     } else {
-      sendResponse({ success: false, error: "Unknown message type" });
+      return;
     }
   },
 };

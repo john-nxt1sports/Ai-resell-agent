@@ -3,9 +3,12 @@
  *
  * Professional-grade image processing for marketplace listings.
  * Provides auto-cropping, manual cropping, and image optimization.
+ * Supports HEIC/HEIF (iOS) with automatic conversion.
  *
  * @module lib/image-cropper
  */
+
+import { isHeicFile, convertHeicIfNeeded } from "./heic-converter";
 
 // ============================================================================
 // Types & Interfaces
@@ -129,10 +132,18 @@ function generateFileName(originalName: string, format: OutputFormat): string {
 
 /**
  * Load an image from a File object.
+ * Automatically converts HEIC/HEIF to JPEG for browser compatibility.
  * Handles cleanup of object URLs on both success and failure.
  */
 export async function loadImage(file: File): Promise<HTMLImageElement> {
-  const url = URL.createObjectURL(file);
+  // Convert HEIC/HEIF to JPEG if needed (browsers can't display HEIC natively)
+  let processedFile = file;
+  if (isHeicFile(file)) {
+    const result = await convertHeicIfNeeded(file);
+    processedFile = result.file;
+  }
+
+  const url = URL.createObjectURL(processedFile);
 
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
@@ -237,6 +248,10 @@ export async function cropImage(
   return new Promise<CropResult>((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
+        // Release canvas memory immediately after blob is created
+        canvas.width = 0;
+        canvas.height = 0;
+
         if (!blob) {
           reject(new Error("Failed to create image blob"));
           return;
@@ -263,6 +278,7 @@ export async function cropImage(
 
 /**
  * Auto-crop an image to the target aspect ratio using center crop.
+ * Loads the image once and reuses dimensions to avoid double decoding.
  *
  * @param file - The source image file
  * @param aspectRatio - Target aspect ratio (default: 1:1 square)
@@ -274,18 +290,81 @@ export async function autoCropImage(
   aspectRatio: AspectRatio = DEFAULT_ASPECT_RATIO,
   options: CropOptions = {},
 ): Promise<CropResult> {
+  // Load image once and calculate crop area from it directly
   const img = await loadImage(file);
+  const { naturalWidth, naturalHeight } = img;
 
   const cropArea = calculateCenterCropArea(
-    img.naturalWidth,
-    img.naturalHeight,
+    naturalWidth,
+    naturalHeight,
     ASPECT_RATIOS[aspectRatio],
   );
 
-  // Clean up the temporary URL before cropping
+  // Reuse the already-loaded image instead of loading again via cropImage
+  const {
+    maxSize = DEFAULT_MAX_SIZE,
+    quality = DEFAULT_QUALITY,
+    outputFormat = DEFAULT_OUTPUT_FORMAT,
+  } = options;
+
+  const { width: outputWidth, height: outputHeight } =
+    calculateOutputDimensions(cropArea.width, cropArea.height, maxSize);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    URL.revokeObjectURL(img.src);
+    throw new Error("Failed to get canvas 2D context");
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  ctx.drawImage(
+    img,
+    cropArea.x,
+    cropArea.y,
+    cropArea.width,
+    cropArea.height,
+    0,
+    0,
+    outputWidth,
+    outputHeight,
+  );
+
   URL.revokeObjectURL(img.src);
 
-  return cropImage(file, cropArea, options);
+  return new Promise<CropResult>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        canvas.width = 0;
+        canvas.height = 0;
+
+        if (!blob) {
+          reject(new Error("Failed to create image blob"));
+          return;
+        }
+
+        const fileName = generateFileName(file.name, outputFormat);
+        const croppedFile = new File([blob], fileName, { type: outputFormat });
+        const croppedUrl = URL.createObjectURL(croppedFile);
+
+        resolve({
+          croppedFile,
+          croppedUrl,
+          originalWidth: naturalWidth,
+          originalHeight: naturalHeight,
+          croppedWidth: outputWidth,
+          croppedHeight: outputHeight,
+        });
+      },
+      outputFormat,
+      quality,
+    );
+  });
 }
 
 /**
@@ -306,12 +385,23 @@ export async function autoCropImages(
     files.map((file) => autoCropImage(file, aspectRatio, options)),
   );
 
-  return results
-    .filter(
-      (result): result is PromiseFulfilledResult<CropResult> =>
-        result.status === "fulfilled",
-    )
-    .map((result) => result.value);
+  const fulfilled = results.filter(
+    (result): result is PromiseFulfilledResult<CropResult> =>
+      result.status === "fulfilled",
+  );
+
+  const rejected = results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+
+  if (rejected.length > 0) {
+    console.warn(
+      `[Image Cropper] ${rejected.length}/${results.length} image(s) failed to crop:`,
+      rejected.map((r) => r.reason?.message ?? r.reason),
+    );
+  }
+
+  return fulfilled.map((result) => result.value);
 }
 
 /**

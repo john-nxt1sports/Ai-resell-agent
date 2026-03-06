@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { FileUploader } from "../ui/FileUploader";
 import { MarketplaceSelector } from "../ui/MarketplaceSelector";
 import { useListingStore } from "@/store/listingStore";
@@ -57,6 +57,28 @@ const AI_STYLES = [
   },
 ];
 
+interface ExtensionDraftImage {
+  id?: string;
+  name?: string;
+  type?: string;
+  dataUrl: string;
+  sourceDataUrl?: string;
+  needsHeicConversion?: boolean;
+}
+
+interface ExtensionListingDraft {
+  source?: string;
+  createdAt?: number;
+  images?: ExtensionDraftImage[];
+  fields?: {
+    title?: string;
+    brand?: string;
+    size?: string;
+    category?: string;
+    notes?: string;
+  };
+}
+
 export function NewListing() {
   const router = useRouter();
   const { addListing } = useListingStore();
@@ -102,8 +124,121 @@ export function NewListing() {
   >("select");
   const [autoGenerateAI, setAutoGenerateAI] = useState(true);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const importedDraftRef = useRef(false);
 
   const supabase = useMemo(() => createClient(), []);
+
+  // Import extension draft when opening /listings/new?extensionDraft=1
+  useEffect(() => {
+    if (importedDraftRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const shouldImportDraft = params.get("extensionDraft") === "1";
+
+    if (!shouldImportDraft) return;
+
+    importedDraftRef.current = true;
+
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    const handleDraftData = async (event: MessageEvent) => {
+      // SECURITY: Only accept messages from our own origin
+      if (event.origin !== window.location.origin) return;
+
+      const payload = event.data;
+      if (!payload || payload.type !== "AI_RESELL_AGENT_DRAFT_DATA") return;
+
+      const draft = payload.draft as ExtensionListingDraft | null;
+      if (!draft || !Array.isArray(draft.images)) return;
+
+      // Load images from base64 payload into FileUploader format
+      const draftImages = draft.images;
+      if (draftImages.length > 0) {
+        try {
+          const convertedImages = await Promise.all(
+            draftImages.map(async (image, index) => {
+              const effectiveDataUrl = image.sourceDataUrl || image.dataUrl;
+
+              // Validate dataUrl is actually a data: URI (prevent arbitrary fetches)
+              if (
+                !effectiveDataUrl ||
+                !effectiveDataUrl.startsWith("data:image/")
+              ) {
+                throw new Error(`Invalid image data at index ${index}`);
+              }
+              if (signal.aborted)
+                throw new DOMException("Aborted", "AbortError");
+
+              const response = await fetch(effectiveDataUrl);
+              const blob = await response.blob();
+              const extension =
+                blob.type === "image/png"
+                  ? "png"
+                  : blob.type === "image/webp"
+                    ? "webp"
+                    : blob.type === "image/heic" || blob.type === "image/heif"
+                      ? "heic"
+                      : "jpg";
+              const file = new File(
+                [blob],
+                image.name || `extension-upload-${index + 1}.${extension}`,
+                { type: blob.type || image.type || "image/jpeg" },
+              );
+
+              // HEIC fallback entries from extension carry a placeholder preview.
+              // Keep that for display while preserving original HEIC bytes for upload.
+              const preview = image.needsHeicConversion
+                ? image.dataUrl
+                : URL.createObjectURL(blob);
+
+              return {
+                id: image.id || crypto.randomUUID(),
+                file,
+                preview,
+              } as UploadedImage;
+            }),
+          );
+
+          if (signal.aborted) return;
+
+          setUploadMode("ai-generate");
+          setImages(convertedImages);
+          setUploadedImageUrls([]);
+          setOrderedImageUrls([]);
+          resetAnalysis();
+          setAiGeneratedData(null);
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError")
+            return;
+          console.error(
+            "[Draft Import] Failed to import extension draft:",
+            error,
+          );
+        }
+      }
+
+      // Fill known listing fields from draft
+      const fields = draft.fields ?? {};
+      if (fields.title) setTitle(fields.title);
+      if (fields.brand) setBrand(fields.brand);
+      if (fields.category) setCategory(fields.category);
+      if (fields.notes) setDescription(fields.notes);
+    };
+
+    window.addEventListener("message", handleDraftData);
+
+    // Request draft from extension content script
+    window.postMessage(
+      { type: "AI_RESELL_AGENT_GET_DRAFT", consume: true },
+      window.location.origin,
+    );
+
+    return () => {
+      controller.abort();
+      window.removeEventListener("message", handleDraftData);
+    };
+  }, [resetAnalysis]);
 
   // Load saved auto-generate AI preference
   useEffect(() => {
@@ -311,14 +446,20 @@ export function NewListing() {
     ],
   );
 
-  // Auto-upload and analyze images when uploaded
+  // Auto-upload and analyze images when uploaded (with debounce to allow multiple drops)
   useEffect(() => {
     if (isLoadingUser || !currentUser) return;
     if (images.length === 0) return;
     if (uploadingImages) return;
     if (uploadedImageUrls.length > 0) return;
 
-    handleUploadAndAnalyzeImages(currentUser);
+    // Debounce: wait 2s after last image change before triggering analysis
+    // This allows users to drop multiple batches of images without re-analyzing each time
+    const debounceTimer = setTimeout(() => {
+      handleUploadAndAnalyzeImages(currentUser);
+    }, 2000);
+
+    return () => clearTimeout(debounceTimer);
   }, [
     images,
     currentUser,

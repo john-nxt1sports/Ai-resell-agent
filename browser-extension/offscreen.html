@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<!--
+  Offscreen document for HEIC → JPEG conversion.
+  Runs in a standard web context where Web Workers (blob: URLs) are allowed,
+  unlike the extension popup which has stricter CSP.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <script src="lib/heic2any.min.js"></script>
+    <script src="offscreen.js"></script>
+  </body>
+</html>
